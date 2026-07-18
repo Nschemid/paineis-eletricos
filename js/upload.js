@@ -74,73 +74,86 @@ function handleDrawingFiles(fileList) {
   });
 }
 
-var POLL_INTERVAL_MS = 3000;
-var POLL_MAX_ATTEMPTS = 100; // ~5 minutes ceiling
-
-// Background Function invocations are capped at 256KB of payload (Lambda async
-// invoke limit) — a single drawing file can already exceed that, so each file
-// is staged in Blobs via upload-file (a fast sync function, no size problem
-// there) and analyze-drawing-background only receives { jobId, fileCount }.
+// Each file is sent as its own synchronous Gemini call (Netlify Functions have
+// a ~10s execution limit; a single call covering several PDFs at once reliably
+// exceeded it). Results are merged client-side into one component list, deduping
+// the same tag+tipo when it's mentioned on more than one sheet.
 function analyzeDrawing(files) {
-  var jobId = uuid();
+  var results = [];
+  var index = 0;
 
-  var stageUploads = files.map(function (f, i) {
-    return fetch('/.netlify/functions/upload-file', {
+  function next() {
+    if (index >= files.length) {
+      showUploadLoading(false);
+      APP.currentExtraction = mergeExtractions(results);
+      renderReview();
+      switchTab('review');
+      return;
+    }
+
+    var f = files[index];
+    showUploadLoading(true, index + 1, files.length);
+
+    fetch('/.netlify/functions/analyze-drawing', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId: jobId, index: i, file: f.base64, mimeType: f.mimeType, name: f.name })
-    }).then(function (res) {
-      if (!res.ok) throw new Error('Falha ao enviar ' + f.name);
+      body: JSON.stringify({ file: f.base64, mimeType: f.mimeType, name: f.name })
+    })
+      .then(function (res) {
+        if (!res.ok) return res.json().then(function (err) {
+          throw new Error((f.name || 'arquivo') + ': ' + (err.detail || err.error || 'falha na análise'));
+        });
+        return res.json();
+      })
+      .then(function (data) {
+        results.push(data);
+        index += 1;
+        next();
+      })
+      .catch(function (err) {
+        showUploadLoading(false);
+        toast('Erro ao analisar: ' + err.message);
+      });
+  }
+
+  next();
+}
+
+function mergeExtractions(results) {
+  var componentes = [];
+  var seen = {};
+  var desenho = null;
+  var notas = [];
+
+  results.forEach(function (r) {
+    if (!desenho && r.desenho) desenho = r.desenho;
+    if (r.notas_gerais) notas.push(r.notas_gerais);
+
+    (r.componentes || []).forEach(function (c) {
+      var key = (c.tag || '').toUpperCase() + '|' + c.tipo_componente;
+      if (Object.prototype.hasOwnProperty.call(seen, key)) {
+        var existingIdx = seen[key];
+        var existing = componentes[existingIdx];
+        if (existing.fonte_polos === 'nao_disponivel_no_desenho' && c.fonte_polos !== 'nao_disponivel_no_desenho') {
+          componentes[existingIdx] = c;
+        }
+      } else {
+        seen[key] = componentes.length;
+        componentes.push(c);
+      }
     });
   });
 
-  Promise.all(stageUploads)
-    .then(function () {
-      return fetch('/.netlify/functions/analyze-drawing-background', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: jobId, fileCount: files.length })
-      });
-    })
-    .then(function () {
-      pollJob(jobId, 0);
-    })
-    .catch(function (err) {
-      showUploadLoading(false);
-      toast('Erro ao iniciar análise: ' + err.message);
-    });
+  return { desenho: desenho || {}, componentes: componentes, notas_gerais: notas.join(' | ') };
 }
 
-function pollJob(jobId, attempt) {
-  if (attempt >= POLL_MAX_ATTEMPTS) {
-    showUploadLoading(false);
-    toast('A análise está demorando demais. Tente novamente com menos arquivos.');
-    return;
-  }
-
-  fetch('/.netlify/functions/job-status?jobId=' + encodeURIComponent(jobId))
-    .then(function (res) { return res.json(); })
-    .then(function (job) {
-      if (job.status === 'done') {
-        showUploadLoading(false);
-        APP.currentExtraction = job.result;
-        renderReview();
-        switchTab('review');
-        return;
-      }
-      if (job.status === 'error') {
-        showUploadLoading(false);
-        toast('Erro ao analisar desenho: ' + job.error);
-        return;
-      }
-      setTimeout(function () { pollJob(jobId, attempt + 1); }, POLL_INTERVAL_MS);
-    })
-    .catch(function () {
-      setTimeout(function () { pollJob(jobId, attempt + 1); }, POLL_INTERVAL_MS);
-    });
-}
-
-function showUploadLoading(isLoading) {
+function showUploadLoading(isLoading, current, total) {
   var el = document.getElementById('upload-loading');
-  if (el) el.style.display = isLoading ? 'block' : 'none';
+  if (!el) return;
+  el.style.display = isLoading ? 'block' : 'none';
+  if (isLoading) {
+    el.textContent = (total > 1)
+      ? ('Analisando arquivo ' + current + ' de ' + total + '...')
+      : 'Analisando desenho...';
+  }
 }

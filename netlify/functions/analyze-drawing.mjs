@@ -1,19 +1,12 @@
-import { getStore } from "@netlify/blobs";
-
 const PROMPT = `Você é um especialista em leitura de desenhos elétricos de quadros de comando/força
-industriais. Analise o(s) desenho(s) anexado(s) — pode ser um único arquivo (foto ou PDF com
-múltiplas folhas) ou VÁRIOS ARQUIVOS enviados juntos representando folhas diferentes do MESMO
-conjunto de desenhos de um projeto (ex: um arquivo com o diagrama de força/unifilar, outro com
-o diagrama de fiação de controle, outro com a legenda de relés). Cada arquivo é precedido por
-um marcador de texto "--- Arquivo N: <nome> ---" indicando seu nome original — use esse nome
-(ou parte dele) para preencher "folha_origem", e trate os arquivos como um conjunto único e
-coerente: uma legenda de relé num arquivo pode ter seu símbolo/contagem de polos determinável
-no diagrama unifilar de outro arquivo, e vice-versa — cruze essa informação entre os arquivos
-sempre que possível antes de decidir "fonte_polos". Extraia a lista de componentes (relés,
-disjuntores, contatores, chaves), com foco especial em determinar corretamente o NÚMERO DE
-POLOS de cada um, evitando duplicar o mesmo componente físico se ele aparecer referenciado em
-mais de um arquivo (ex: mesmo tag citado na legenda de um arquivo e no unifilar de outro —
-isso é UM componente só, não dois).
+industriais. Analise o arquivo anexado (foto ou PDF, podendo ter múltiplas páginas/folhas)
+e extraia a lista de componentes (relés, disjuntores, contatores, chaves), com foco
+especial em determinar corretamente o NÚMERO DE POLOS de cada um.
+
+Este arquivo pode ser UMA folha de um conjunto maior de desenhos do mesmo projeto (outras
+folhas foram ou serão analisadas separadamente) — extraia tudo que for identificável NESTE
+arquivo mesmo que a informação pareça incompleta sem ver as outras folhas (ex: um relé com
+tag e função mas sem polos determinável é um resultado válido e esperado, não um problema).
 
 O número de polos pode vir de TRÊS fontes distintas — classifique cada componente
 corretamente em "fonte_polos":
@@ -57,7 +50,7 @@ símbolo toca, ou "nenhuma informação de polos no desenho, apenas marca X e ta
 este campo será usado por uma pessoa para conferir e pegar erros de interpretação visual,
 então seja concreto e específico, não genérico.
 
-Se o arquivo tiver múltiplas folhas/páginas, preencha "folha_origem" com o número ou
+Se o arquivo tiver múltiplas páginas/folhas, preencha "folha_origem" com o número ou
 título da folha onde cada componente foi encontrado, para permitir voltar exatamente
 naquele ponto do desenho.
 
@@ -113,17 +106,16 @@ const responseSchema = {
   required: ["desenho", "componentes"],
 };
 
-async function callGemini(apiKey, files) {
+async function callGemini(apiKey, file, mimeType, name) {
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
 
-  const parts = [{ text: PROMPT }];
-  files.forEach((f, i) => {
-    parts.push({ text: `\n--- Arquivo ${i + 1}: ${f.name || "sem nome"} ---` });
-    parts.push({ inlineData: { mimeType: f.mimeType, data: f.file } });
-  });
-
   const geminiBody = {
-    contents: [{ parts }],
+    contents: [{
+      parts: [
+        { text: PROMPT + (name ? `\n\nNome do arquivo: ${name}` : "") },
+        { inlineData: { mimeType, data: file } },
+      ],
+    }],
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema,
@@ -157,57 +149,47 @@ async function callGemini(apiKey, files) {
   return JSON.parse(text);
 }
 
-// Netlify Background Function: classic handler(event, context) signature.
-// The platform responds 202 to the caller immediately and lets this run
-// for up to 15 minutes — needed because analyzing several PDF sheets in one
-// Gemini call routinely exceeds the ~10s limit of a normal sync function.
-//
-// The invocation payload itself is capped at 256KB (Lambda async invoke limit),
-// which a single drawing photo/PDF can already exceed and multiple definitely
-// do — so this function does NOT receive file bytes directly. The client
-// stages each file in the "uploads" Blobs store via upload-file.mjs first and
-// only sends { jobId, fileCount } here; this function reads the bytes back by
-// key, well within its own 15-minute execution budget.
-export async function handler(event) {
-  const jobs = getStore("jobs");
-  const uploads = getStore("uploads");
-  let jobId, fileCount;
-
-  try {
-    const body = JSON.parse(event.body || "{}");
-    jobId = body.jobId;
-    fileCount = body.fileCount;
-  } catch {
-    return { statusCode: 400, body: "Invalid JSON" };
+export default async function handler(req) {
+  if (req.method === "OPTIONS") {
+    return new Response("", {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
   }
 
-  if (!jobId || !fileCount) {
-    return { statusCode: 400, body: "Missing jobId or fileCount" };
+  if (req.method !== "POST") {
+    return Response.json({ error: "POST only" }, { status: 405, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    await jobs.set(jobId, JSON.stringify({ status: "error", error: "API key not configured" }));
-    return { statusCode: 200, body: "" };
+    return Response.json({ error: "API key not configured" }, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
+  }
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+  }
+
+  const { file, mimeType, name } = body;
+  if (!file || !mimeType) {
+    return Response.json({ error: "Missing file or mimeType" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
   try {
-    const files = [];
-    for (let i = 0; i < fileCount; i++) {
-      const raw = await uploads.get(`${jobId}:${i}`);
-      if (!raw) throw new Error(`Arquivo ${i} não encontrado no armazenamento temporário`);
-      files.push(JSON.parse(raw));
-    }
-
-    const result = await callGemini(apiKey, files);
-    await jobs.set(jobId, JSON.stringify({ status: "done", result, finished_at: new Date().toISOString() }));
-
-    for (let i = 0; i < fileCount; i++) {
-      await uploads.delete(`${jobId}:${i}`);
-    }
+    const parsed = await callGemini(apiKey, file, mimeType, name);
+    return Response.json(parsed, { headers: { "Access-Control-Allow-Origin": "*" } });
   } catch (err) {
-    await jobs.set(jobId, JSON.stringify({ status: "error", error: err.message, finished_at: new Date().toISOString() }));
+    return Response.json({ error: "Analysis failed", detail: err.message }, { status: 502, headers: { "Access-Control-Allow-Origin": "*" } });
   }
-
-  return { statusCode: 200, body: "" };
 }
+
+export const config = {
+  method: "POST",
+};

@@ -11,8 +11,8 @@
 - `resizeImage(file, maxSize, quality, callback)` — downscale de fotos via canvas (mesmo padrão do `gluton`)
 - `readFileAsBase64(file, callback)` — usado para PDF, sem downscale
 - `handleDrawingFiles(fileList)` — aceita múltiplos arquivos (input `multiple`), prepara todos em paralelo, monta `APP.currentFiles` e chama `analyzeDrawing(files)`
-- `analyzeDrawing(files)` — gera um `jobId`, faz `POST upload-file` pra cada arquivo (grava em Blobs, evita o limite de 256KB de payload das Background Functions), depois `POST analyze-drawing-background` (só `{jobId, fileCount}`) e inicia `pollJob(jobId, 0)`
-- `pollJob(jobId, attempt)` — consulta `GET job-status?jobId=...` a cada 3s (até 100 tentativas, ~5min) até `status` virar `done` (preenche `APP.currentExtraction`, chama `renderReview()`, troca pra aba Revisão) ou `error` (toast)
+- `analyzeDrawing(files)` — chama `POST analyze-drawing` **uma vez por arquivo, em sequência** (não em paralelo — evita sobrecarregar a API e mantém a barra de progresso "arquivo N de M" fazendo sentido), acumula os resultados e no final chama `mergeExtractions(results)`
+- `mergeExtractions(results)` — concatena os `componentes` de todas as respostas, deduplicando por `tag + tipo_componente` (mantém a versão com `polos` determinado se uma das duas for `nao_disponivel_no_desenho`)
 
 ## `js/review.js`
 - `buildReviewRows()` — monta `APP.reviewRows` a partir da extração, já rodando o matching de catálogo por linha

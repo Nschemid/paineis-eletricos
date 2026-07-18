@@ -1,53 +1,37 @@
 # Schema de extração
 
-Implementado em `netlify/functions/analyze-drawing-background.mjs` (função assíncrona —
-ver `docs/app-reference.md` pra explicação do padrão job/polling) + `job-status.mjs`
-(consulta de status). O prompt completo e o `responseSchema` (dialeto Gemini, tipos em
-maiúsculo) vivem no código-fonte da function — este arquivo documenta a forma dos dados
-pra quem for consumir o resultado no frontend.
+Implementado em `netlify/functions/analyze-drawing.mjs` (function síncrona normal). O
+prompt completo e o `responseSchema` (dialeto Gemini, tipos em maiúsculo) vivem no
+código-fonte da function — este arquivo documenta a forma dos dados pra quem for
+consumir o resultado no frontend.
 
-## Fluxo assíncrono (upload em Blobs + job + polling)
+## Um arquivo por chamada, mesclado no cliente
 
-Análise de várias folhas juntas facilmente passa do limite de ~10s de uma Netlify
-Function síncrona, então a extração roda como **Background Function** (até 15 min,
-sem resposta direta). Mas invocações de Background Function também têm um limite de
-**256KB de payload** (limite de invocação assíncrona do Lambda) — um único PDF de
-desenho já pode passar disso. Por isso os arquivos NÃO vão direto na invocação da
-function de análise: primeiro ficam armazenados em Blobs, e a function de análise só
-recebe a referência (`jobId` + quantidade de arquivos), lendo o conteúdo real por
-dentro (sem limite de payload nesse caso, só o de execução):
+`analyze-drawing.mjs` recebe **um arquivo por vez** (`{file, mimeType, name}`). Quando
+a usuária sobe várias folhas juntas, `js/upload.js` chama a function **uma vez por
+arquivo, em sequência**, e mescla os `componentes` de todas as respostas no cliente
+(`mergeExtractions()`), deduplicando por `tag + tipo_componente` — se o mesmo tag
+aparecer em duas folhas, fica só uma entrada, preferindo a versão que já tem `polos`
+determinado sobre a `nao_disponivel_no_desenho`.
 
-```
-1. Cliente gera um jobId (uuid). Para CADA arquivo, faz (sequencial ou paralelo):
-   POST /.netlify/functions/upload-file
-   { "jobId": "...", "index": 0, "file": "<base64>", "mimeType": "...", "name": "ME331.pdf" }
-   → function síncrona rápida, só grava no store "uploads" (sem o limite de 256KB
-     das Background Functions — isso aqui é uma invocação síncrona normal)
+**Por que não é uma chamada só com todos os arquivos:** foi a primeira tentativa e não
+funcionou de forma confiável neste projeto:
+- Uma chamada síncrona só com 4 PDFs juntos passa do limite de ~10s de execução de uma
+  Netlify Function normal (erro "Inactivity Timeout").
+- A alternativa óbvia — rodar como **Background Function** (até 15 min de execução) —
+  não chegou a executar de verdade: jobs ficaram presos em "pending" indefinidamente,
+  mesmo bem depois da janela de 15 minutos. O mais provável é Background Functions
+  serem recurso de plano pago do Netlify, não disponível no free tier usado aqui. Não
+  foi possível confirmar pelos logs (sem acesso ao dashboard/CLI no ambiente de
+  desenvolvimento), então isso fica registrado como hipótese, não certeza — se o site
+  migrar pra um plano pago, vale reconsiderar essa arquitetura pra recuperar o cruzamento
+  de informação entre folhas na mesma chamada de IA (ver abaixo).
 
-2. Depois de todos os arquivos enviados, dispara a análise:
-   POST /.netlify/functions/analyze-drawing-background
-   { "jobId": "...", "fileCount": 4 }
-   → resposta imediata (202/200 vazio, o corpo não importa); a function lê os
-     arquivos de volta do store "uploads" por dentro, chama o Gemini, grava o
-     resultado no store "jobs" e apaga as entradas de "uploads" ao terminar
-
-3. Cliente faz polling a cada ~3s:
-   GET /.netlify/functions/job-status?jobId=...
-   → { "status": "pending" }                              (ainda rodando)
-   → { "status": "done", "result": { ...extração... } }    (pronto)
-   → { "status": "error", "error": "mensagem" }            (falhou)
-```
-
-Aceita 1 ou mais arquivos numa chamada só, representando folhas diferentes do mesmo
-conjunto de desenhos. O prompt instrui o modelo a tratá-los como um conjunto único,
-cruzar informação entre eles (ex: legenda numa folha + símbolo em outra) e não duplicar
-o mesmo componente físico se ele aparecer referenciado em mais de um arquivo. Cada
-arquivo é identificado no prompt pelo `name` enviado — use nomes de arquivo
-significativos no upload, viram literalmente o texto que a IA usa em `folha_origem`.
-
-O resultado dos jobs fica guardado indefinidamente no store `jobs` do Netlify Blobs
-(sem limpeza automática) — não é um problema em uso solo/baixo volume, mas vale saber
-que existe caso o Blobs cresça muito com o tempo.
+**Custo dessa decisão:** cada arquivo é analisado isoladamente pela IA — ela não vê as
+outras folhas ao processar uma, então não cruza "legenda de relé na folha X" com
+"símbolo no diagrama unifilar da folha Y" dentro do mesmo raciocínio. Isso é uma perda
+real de precisão em alguns casos, mas ainda assim cada folha extrai corretamente o que
+está determinável nela mesma (testado com os 4 desenhos reais do projeto R-MSSB7-ESS).
 
 ## Resposta
 
