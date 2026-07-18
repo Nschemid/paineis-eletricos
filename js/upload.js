@@ -81,6 +81,36 @@ function handleDrawingFiles(fileList) {
 function analyzeDrawing(files) {
   var results = [];
   var index = 0;
+  var RETRYABLE_STATUS = [502, 503, 504];
+  var MAX_RETRIES = 2;
+  var RETRY_DELAY_MS = 6000;
+
+  function callOnce(f) {
+    return fetch('/.netlify/functions/analyze-drawing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: f.base64, mimeType: f.mimeType, name: f.name })
+    }).then(function (res) {
+      if (res.ok) return res.json();
+      var status = res.status;
+      return res.json().catch(function () { return {}; }).then(function (err) {
+        var e = new Error((f.name || 'arquivo') + ': ' + (err.detail || err.error || ('HTTP ' + status)));
+        e.status = status;
+        throw e;
+      });
+    });
+  }
+
+  function callWithRetry(f, attemptsLeft) {
+    return callOnce(f).catch(function (err) {
+      if (attemptsLeft > 0 && RETRYABLE_STATUS.indexOf(err.status) !== -1) {
+        toast('Instabilidade temporária, tentando "' + f.name + '" de novo...');
+        return new Promise(function (resolve) { setTimeout(resolve, RETRY_DELAY_MS); })
+          .then(function () { return callWithRetry(f, attemptsLeft - 1); });
+      }
+      throw err;
+    });
+  }
 
   function next() {
     if (index >= files.length) {
@@ -94,17 +124,7 @@ function analyzeDrawing(files) {
     var f = files[index];
     showUploadLoading(true, index + 1, files.length);
 
-    fetch('/.netlify/functions/analyze-drawing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: f.base64, mimeType: f.mimeType, name: f.name })
-    })
-      .then(function (res) {
-        if (!res.ok) return res.json().then(function (err) {
-          throw new Error((f.name || 'arquivo') + ': ' + (err.detail || err.error || 'falha na análise'));
-        });
-        return res.json();
-      })
+    callWithRetry(f, MAX_RETRIES)
       .then(function (data) {
         results.push(data);
         index += 1;
