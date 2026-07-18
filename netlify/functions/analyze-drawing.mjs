@@ -85,7 +85,7 @@ const responseSchema = {
 };
 
 async function callGemini(apiKey, file, mimeType) {
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
 
   const geminiBody = {
     contents: [{ parts: [{ text: PROMPT }, { inlineData: { mimeType, data: file } }] }],
