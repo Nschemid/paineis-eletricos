@@ -41,6 +41,21 @@
     <div class="review-layout">
       <div class="review-preview" id="review-preview"></div>
       <div class="review-table-wrap">
+        <div class="review-filters">
+          <select id="filter-tipo">
+            <option value="">Todos os tipos</option>
+          </select>
+          <input type="text" id="filter-tag" placeholder="Buscar por tag...">
+          <span id="filter-count" class="hint"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="comp-table" id="review-summary-table">
+            <thead>
+              <tr><th>Tags</th><th>Tipo</th><th>Descrição</th><th>Qtde</th><th>Polos</th></tr>
+            </thead>
+            <tbody id="review-summary-body"></tbody>
+          </table>
+        </div>
         <div style="overflow-x:auto">
           <table class="comp-table">
             <thead>

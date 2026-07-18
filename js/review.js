@@ -26,10 +26,15 @@ function renderReview() {
   if (!extraction) return;
 
   buildReviewRows();
+  APP.reviewFilters = { tipo: '', tag: '' };
+  var tagInput = document.getElementById('filter-tag');
+  if (tagInput) tagInput.value = '';
   renderReviewHeader();
   renderReviewPreview();
+  populateTipoFilterOptions();
   renderReviewTable();
   wireReviewEvents();
+  wireReviewFilters();
 }
 
 function renderReviewHeader() {
@@ -95,16 +100,124 @@ function matchBadgeHtml(row) {
   return '<span class="badge badge-muted">— sem match</span>';
 }
 
+function rowMatchesFilter(row) {
+  var f = APP.reviewFilters;
+  if (f.tipo && row.tipo_componente !== f.tipo) return false;
+  if (f.tag && row.tag.toUpperCase().indexOf(f.tag.toUpperCase()) === -1) return false;
+  return true;
+}
+
+function genericDescricao(desc) {
+  return String(desc || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
+function tagRangeLabel(tags) {
+  if (tags.length === 1) return tags[0];
+  var prefix = tagPrefix(tags[0]);
+  var nums = tags.map(function (t) {
+    var m = t.match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  });
+  if (nums.indexOf(null) === -1) {
+    var min = Math.min.apply(null, nums);
+    var max = Math.max.apply(null, nums);
+    return prefix + min + '–' + prefix + max;
+  }
+  return tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '');
+}
+
+function buildReviewSummary(rows) {
+  var groups = {};
+  var order = [];
+  rows.forEach(function (row) {
+    var prefix = tagPrefix(row.tag) || row.tag;
+    var desc = genericDescricao(row.descricao);
+    var key = prefix + '|' + row.tipo_componente + '|' + desc;
+    if (!groups[key]) {
+      groups[key] = { tipo: row.tipo_componente, descricao: desc, tags: [], polosSet: {} };
+      order.push(key);
+    }
+    groups[key].tags.push(row.tag);
+    groups[key].polosSet[row.polos] = true;
+  });
+  return order.map(function (key) {
+    var g = groups[key];
+    var polosValues = Object.keys(g.polosSet);
+    return {
+      label: tagRangeLabel(g.tags),
+      tipo: g.tipo,
+      descricao: g.descricao,
+      qtde: g.tags.length,
+      polos: polosValues.length === 1 ? polosValues[0] : 'variável (confira)'
+    };
+  });
+}
+
+function renderReviewSummary() {
+  var body = document.getElementById('review-summary-body');
+  if (!body) return;
+  var rows = APP.reviewRows.filter(rowMatchesFilter);
+  if (!rows.length) {
+    body.innerHTML = '';
+    return;
+  }
+  var summary = buildReviewSummary(rows);
+  body.innerHTML = summary.map(function (g) {
+    return '<tr>' +
+      '<td>' + escapeHtml(g.label) + '</td>' +
+      '<td>' + escapeHtml(g.tipo) + '</td>' +
+      '<td>' + escapeHtml(g.descricao) + '</td>' +
+      '<td><strong>' + g.qtde + '</strong></td>' +
+      '<td>' + escapeHtml(g.polos) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function populateTipoFilterOptions() {
+  var select = document.getElementById('filter-tipo');
+  if (!select) return;
+  var current = select.value;
+  var types = [];
+  APP.reviewRows.forEach(function (row) {
+    if (row.tipo_componente && types.indexOf(row.tipo_componente) === -1) types.push(row.tipo_componente);
+  });
+  types.sort();
+  select.innerHTML = '<option value="">Todos os tipos</option>' +
+    types.map(function (t) { return '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>'; }).join('');
+  select.value = types.indexOf(current) !== -1 ? current : '';
+}
+
+function wireReviewFilters() {
+  var tipoSelect = document.getElementById('filter-tipo');
+  var tagInput = document.getElementById('filter-tag');
+  if (!tipoSelect || tipoSelect.dataset.wired) return;
+  tipoSelect.dataset.wired = '1';
+
+  tipoSelect.addEventListener('change', function () {
+    APP.reviewFilters.tipo = tipoSelect.value;
+    renderReviewTable();
+  });
+  tagInput.addEventListener('input', function () {
+    APP.reviewFilters.tag = tagInput.value;
+    renderReviewTable();
+  });
+}
+
 function renderReviewTable() {
   var body = document.getElementById('review-table-body');
   if (!body) return;
 
   if (!APP.reviewRows.length) {
     body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum componente identificado.</td></tr>';
+    updateFilterCount(0, 0);
     return;
   }
 
+  var visibleCount = 0;
+
   body.innerHTML = APP.reviewRows.map(function (row, i) {
+    if (!rowMatchesFilter(row)) return '';
+    visibleCount += 1;
     var sourceLabel = { bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[row.fonte_polos] || row.fonte_polos;
     var mainRow =
       '<tr class="' + confBadgeClass(row.confianca) + '" data-row="' + i + '">' +
@@ -157,11 +270,25 @@ function renderReviewTable() {
     return mainRow + evidenciaRow + suggestRow + addFormRow;
   }).join('');
 
+  if (visibleCount === 0) {
+    body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum item bate com o filtro atual.</td></tr>';
+  }
+
   // set select values that can't be set via value attribute above
   APP.reviewRows.forEach(function (row, i) {
+    if (!rowMatchesFilter(row)) return;
     var formRow = body.querySelector('[data-row-addform="' + i + '"]');
     if (formRow) formRow.querySelector('.inline-tipo').value = row.tipo_componente;
   });
+
+  updateFilterCount(visibleCount, APP.reviewRows.length);
+  renderReviewSummary();
+}
+
+function updateFilterCount(visible, total) {
+  var el = document.getElementById('filter-count');
+  if (!el) return;
+  el.textContent = (visible === total) ? (total + ' itens') : (visible + ' de ' + total + ' itens');
 }
 
 function wireReviewEvents() {

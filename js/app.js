@@ -4,7 +4,8 @@ var APP = {
   currentExtraction: null,
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
-  reviewRows: []
+  reviewRows: [],
+  reviewFilters: { tipo: '', tag: '' }
 };
 
 function switchTab(name) {
