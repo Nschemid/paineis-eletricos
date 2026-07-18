@@ -140,11 +140,11 @@ function confBadgeClass(conf) {
   return 'conf-high';
 }
 
-function cableCellHtml(row) {
+function cableCellHtml(row, i) {
   if (!row.rated_current_a) return '<span class="hint">—</span>';
   var cell = row.rated_current_a + 'A';
   if (row.suggested_cable) {
-    cell += ' → <strong>' + escapeHtml(row.suggested_cable.code) + '</strong>';
+    cell += ' → <button class="evidencia-toggle" data-action="toggle-cable-detail" data-row="' + i + '">' + escapeHtml(row.suggested_cable.code) + '</button>';
     if (row.cable_mismatch) {
       cell += '<br><span class="badge badge-bad">drawing says ' + escapeHtml(row.drawing_cable_size_mm2) + 'mm² — undersized</span>';
     }
@@ -152,6 +152,18 @@ function cableCellHtml(row) {
     cell += '<br><span class="badge badge-muted">no cable rated this high</span>';
   }
   return cell;
+}
+
+function cableDetailRowHtml(row, i) {
+  if (!row.suggested_cable) return '';
+  var c = row.suggested_cable;
+  return '<tr class="cable-detail-row" data-row-cable="' + i + '" style="display:none"><td colspan="10"><div class="evidencia-detail show">' +
+    '<strong>' + escapeHtml(c.code) + '</strong>' + (c.confidence === 'low' ? ' <span class="badge badge-warn">verify</span>' : '') + '<br>' +
+    'Area: ' + escapeHtml(c.area_mm2) + ' mm² &nbsp; OD: ' + escapeHtml(c.od_mm) + ' mm &nbsp; DC resistance: ' + escapeHtml(c.dc_resistance_mohm_per_m) + ' mΩ/m<br>' +
+    'Continuous: ' + escapeHtml(c.continuous_current_a) + 'A &nbsp; Short-circuit (1s): ' + escapeHtml(c.short_circuit_1s_a) + 'A<br>' +
+    'Bend radius during/final: ' + escapeHtml(c.bend_radius_during_mm) + ' / ' + escapeHtml(c.bend_radius_final_mm || '?') + ' mm' +
+    (row.cable_mismatch ? '<br><span class="badge badge-bad">drawing states ' + escapeHtml(row.drawing_cable_size_mm2) + 'mm² — undersized for ' + escapeHtml(row.rated_current_a) + 'A</span>' : '') +
+    '</div></td></tr>';
 }
 
 function matchBadgeHtml(row) {
@@ -275,7 +287,7 @@ function itemRowHtml(row, i, extraClass) {
     '<td>' + escapeHtml(sourceLabel) + '<br>' +
       '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detail</button></td>' +
     '<td>' + escapeHtml(row.confidence) + '</td>' +
-    '<td>' + cableCellHtml(row) + '</td>' +
+    '<td>' + cableCellHtml(row, i) + '</td>' +
     '<td>' + matchBadgeHtml(row) +
       (row.matchStatus === 'no_match' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ add to catalog</button>' : '') +
       '</td>' +
@@ -314,7 +326,9 @@ function itemRowHtml(row, i, extraClass) {
     '</div><button data-action="save-add-form" data-row="' + i + '" style="margin-top:8px">Save to catalog</button>' +
     '</td></tr>';
 
-  return mainRow + evidenceRow + suggestRow + addFormRow;
+  var cableDetailRow = cableDetailRowHtml(row, i);
+
+  return mainRow + evidenceRow + suggestRow + cableDetailRow + addFormRow;
 }
 
 function populateTypeFilterOptions() {
@@ -442,6 +456,13 @@ function wireReviewEvents() {
       var idx = parseInt(trMain.dataset.row, 10);
       var r2 = body.querySelector('[data-row-suggest="' + idx + '"]');
       if (r2) r2.style.display = r2.style.display === 'none' ? 'table-row' : 'none';
+    }
+
+    if (action === 'toggle-cable-detail') {
+      var trMainCable = btn.closest('tr');
+      var idxCable = parseInt(trMainCable.dataset.row, 10);
+      var r4 = body.querySelector('[data-row-cable="' + idxCable + '"]');
+      if (r4) r4.style.display = r4.style.display === 'none' ? 'table-row' : 'none';
     }
 
     if (action === 'accept-suggest') {
