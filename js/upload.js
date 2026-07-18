@@ -77,7 +77,7 @@ function handleDrawingFiles(fileList) {
 // Each file is sent as its own synchronous Gemini call (Netlify Functions have
 // a ~10s execution limit; a single call covering several PDFs at once reliably
 // exceeded it). Results are merged client-side into one component list, deduping
-// the same tag+tipo when it's mentioned on more than one sheet.
+// the same tag+type when it's mentioned on more than one sheet.
 function analyzeDrawing(files) {
   var results = [];
   var index = 0;
@@ -96,9 +96,9 @@ function analyzeDrawing(files) {
       return res.json().catch(function () { return {}; }).then(function (err) {
         var detail = err.detail || err.error || ('HTTP ' + status);
         if (/RESOURCE_EXHAUSTED|quota/i.test(detail)) {
-          detail = 'cota diária gratuita do Gemini esgotada — tente de novo mais tarde (reseta ~24h)';
+          detail = 'Gemini free daily quota exhausted — try again later (resets in ~24h)';
         }
-        var e = new Error((f.name || 'arquivo') + ': ' + detail);
+        var e = new Error((f.name || 'file') + ': ' + detail);
         e.status = status;
         throw e;
       });
@@ -108,7 +108,7 @@ function analyzeDrawing(files) {
   function callWithRetry(f, attemptsLeft) {
     return callOnce(f).catch(function (err) {
       if (attemptsLeft > 0 && RETRYABLE_STATUS.indexOf(err.status) !== -1) {
-        toast('Instabilidade temporária, tentando "' + f.name + '" de novo...');
+        toast('Temporary instability, retrying "' + f.name + '"...');
         return new Promise(function (resolve) { setTimeout(resolve, RETRY_DELAY_MS); })
           .then(function () { return callWithRetry(f, attemptsLeft - 1); });
       }
@@ -136,7 +136,7 @@ function analyzeDrawing(files) {
       })
       .catch(function (err) {
         showUploadLoading(false);
-        toast('Erro ao analisar: ' + err.message);
+        toast('Analysis error: ' + err.message);
       });
   }
 
@@ -144,31 +144,31 @@ function analyzeDrawing(files) {
 }
 
 function mergeExtractions(results) {
-  var componentes = [];
+  var components = [];
   var seen = {};
-  var desenho = null;
-  var notas = [];
+  var drawing = null;
+  var notes = [];
 
   results.forEach(function (r) {
-    if (!desenho && r.desenho) desenho = r.desenho;
-    if (r.notas_gerais) notas.push(r.notas_gerais);
+    if (!drawing && r.drawing) drawing = r.drawing;
+    if (r.general_notes) notes.push(r.general_notes);
 
-    (r.componentes || []).forEach(function (c) {
-      var key = (c.tag || '').toUpperCase() + '|' + c.tipo_componente;
+    (r.components || []).forEach(function (c) {
+      var key = (c.tag || '').toUpperCase() + '|' + c.component_type;
       if (Object.prototype.hasOwnProperty.call(seen, key)) {
         var existingIdx = seen[key];
-        var existing = componentes[existingIdx];
-        if (existing.fonte_polos === 'nao_disponivel_no_desenho' && c.fonte_polos !== 'nao_disponivel_no_desenho') {
-          componentes[existingIdx] = c;
+        var existing = components[existingIdx];
+        if (existing.pole_source === 'not_available' && c.pole_source !== 'not_available') {
+          components[existingIdx] = c;
         }
       } else {
-        seen[key] = componentes.length;
-        componentes.push(c);
+        seen[key] = components.length;
+        components.push(c);
       }
     });
   });
 
-  return { desenho: desenho || {}, componentes: componentes, notas_gerais: notas.join(' | ') };
+  return { drawing: drawing || {}, components: components, general_notes: notes.join(' | ') };
 }
 
 function showUploadLoading(isLoading, current, total) {
@@ -177,7 +177,7 @@ function showUploadLoading(isLoading, current, total) {
   el.style.display = isLoading ? 'block' : 'none';
   if (isLoading) {
     el.textContent = (total > 1)
-      ? ('Analisando arquivo ' + current + ' de ' + total + '...')
-      : 'Analisando desenho...';
+      ? ('Analyzing file ' + current + ' of ' + total + '...')
+      : 'Analyzing drawing...';
   }
 }

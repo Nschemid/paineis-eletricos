@@ -1,32 +1,48 @@
-# Referência de código
+# Code reference
 
 ## `js/app.js`
-- `APP` — estado global: `catalog`, `drawings`, `currentExtraction`, `currentFile`, `reviewRows`
-- `switchTab(name)` — troca de aba (`upload`/`review`/`catalog`)
-- `fetchStore(store)` / `saveStore(store, array)` — GET/POST em `data.mjs`
-- `toast(msg)` — notificação simples no rodapé
-- `escapeHtml(str)`, `uuid()` — utilitários
+- `APP` — global state: `catalog`, `drawings`, `currentExtraction`, `currentFiles`,
+  `previewZoom`, `reviewRows`, `reviewFilters`, `expandedGroups`
+- `switchTab(name)` — tab switching (`upload`/`review`/`catalog`)
+- `fetchStore(store)` / `saveStore(store, array)` — GET/POST against `data.mjs`
+- `toast(msg)` — simple bottom notification
+- `escapeHtml(str)`, `uuid()` — utilities
 
 ## `js/upload.js`
-- `resizeImage(file, maxSize, quality, callback)` — downscale de fotos via canvas (mesmo padrão do `gluton`)
-- `readFileAsBase64(file, callback)` — usado para PDF, sem downscale
-- `handleDrawingFiles(fileList)` — aceita múltiplos arquivos (input `multiple`), prepara todos em paralelo, monta `APP.currentFiles` e chama `analyzeDrawing(files)`
-- `analyzeDrawing(files)` — chama `POST analyze-drawing` **uma vez por arquivo, em sequência** (não em paralelo — evita sobrecarregar a API e mantém a barra de progresso "arquivo N de M" fazendo sentido), acumula os resultados e no final chama `mergeExtractions(results)`
-- `mergeExtractions(results)` — concatena os `componentes` de todas as respostas, deduplicando por `tag + tipo_componente` (mantém a versão com `polos` determinado se uma das duas for `nao_disponivel_no_desenho`)
+- `resizeImage(file, maxSize, quality, callback)` — canvas-based photo downscale (same
+  pattern as `gluton`)
+- `readFileAsBase64(file, callback)` — used for PDFs, no downscale
+- `handleDrawingFiles(fileList)` — accepts multiple files (`multiple` input), prepares
+  all in parallel, builds `APP.currentFiles` and calls `analyzeDrawing(files)`
+- `analyzeDrawing(files)` — calls `POST analyze-drawing` **once per file, in sequence**
+  (not in parallel — avoids overloading the API and keeps the "file N of M" progress
+  indicator meaningful), accumulates results, then calls `mergeExtractions(results)`
+- `mergeExtractions(results)` — concatenates `components` from every response,
+  deduplicating by `tag + component_type` (keeps the version with `poles` determined if
+  one of the two is `not_available`)
 
 ## `js/review.js`
-- `buildReviewRows()` — monta `APP.reviewRows` a partir da extração, já rodando o matching de catálogo por linha
-- `renderReview()` / `renderReviewPreview()` / `renderReviewTable()` — desenham a tela
-- `wireReviewEvents()` — delegação de eventos (editar polos, expandir evidência, aceitar sugestão de catálogo, cadastrar item novo inline)
-- `confirmReviewList()` — grava a lista revisada no store `drawings`
+- `buildReviewRows()` — builds `APP.reviewRows` from the extraction, already running
+  catalog matching per row
+- `renderReview()` / `renderReviewPreview()` / `renderReviewTable()` — draw the screen
+- `applyPreviewZoom()` / `wireZoomControls()` — +/− zoom on the drawing preview (image
+  or PDF), via CSS transform on `#preview-zoom-target`
+- `buildGroups(entries)` / `groupHeaderRowHtml()` — collapses repeated tags (e.g.
+  DCR1..DCR16) into one expandable group row showing quantity; singleton items render
+  directly as a normal row
+- `wireReviewEvents()` — event delegation (edit poles, expand evidence, accept a
+  catalog suggestion, register a new item inline, expand/collapse a group)
+- `confirmReviewList()` — saves the reviewed list to the `drawings` store
 
 ## `js/catalog.js`
-- `renderCatalog()` — desenha a tabela do catálogo
-- `createCatalogEntry(fields)` — usado tanto pela tela de Catálogo quanto pelo botão inline da Revisão
+- `renderCatalog()` — draws the catalog table
+- `createCatalogEntry(fields)` — used both by the Catalog screen and the inline button
+  on the Review screen
 - `deleteCatalogEntry(id)`
 
 ## `js/match.js`
-Funções puras, sem estado, ver `docs/catalog-schema.md` para o algoritmo.
+Pure, stateless functions — see `docs/catalog-schema.md` for the algorithm.
 
 ## CSS
-`css/style.css` — cores por `prefers-color-scheme`, `--tap: 48px` pra alvos de toque no mobile, `.review-layout` vira duas colunas a partir de 900px.
+`css/style.css` — fixed dark/amber technical theme, `--tap: 48px` for mobile tap
+targets, `.review-layout` becomes two columns from 900px up.

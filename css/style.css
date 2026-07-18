@@ -170,9 +170,30 @@ input:focus, select:focus, textarea:focus {
 
 @media (min-width: 900px) {
   .review-layout { flex-direction: row; align-items: stretch; }
-  .review-preview { flex: 0 0 42%; }
+  .review-preview-col { flex: 0 0 42%; }
   .review-table-wrap { flex: 1 1 auto; }
 }
+
+.review-preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-zoom-controls button {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 4px 10px;
+  font-size: 1rem;
+}
+
+.preview-zoom-controls #zoom-reset { font-size: 0.75rem; min-width: auto; }
 
 .review-preview {
   background: var(--surface);
@@ -185,8 +206,8 @@ input:focus, select:focus, textarea:focus {
   justify-content: center;
 }
 
-.review-preview img { max-width: 100%; display: block; }
-.review-preview embed, .review-preview iframe { width: 100%; height: 60vh; border: none; }
+.review-preview img { max-width: 100%; display: block; transform-origin: top left; }
+.review-preview embed, .review-preview iframe { width: 100%; height: 60vh; border: none; transform-origin: top left; }
 
 .review-filters {
   display: flex;
@@ -260,9 +281,9 @@ table.comp-table th {
   color: var(--accent);
 }
 
-tr.conf-media { border-left: 4px solid var(--warn); }
-tr.conf-baixa { border-left: 4px solid var(--bad); }
-tr.conf-alta { border-left: 4px solid transparent; }
+tr.conf-medium { border-left: 4px solid var(--warn); }
+tr.conf-low { border-left: 4px solid var(--bad); }
+tr.conf-high { border-left: 4px solid transparent; }
 
 .badge {
   display: inline-flex;

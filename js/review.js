@@ -1,21 +1,21 @@
 function buildReviewRows() {
   var extraction = APP.currentExtraction;
-  APP.reviewRows = (extraction.componentes || []).map(function (item) {
+  APP.reviewRows = (extraction.components || []).map(function (item) {
     var match = matchComponent(item, APP.catalog);
-    var polos = item.polos;
-    var resolvidoVia = 'extracao';
+    var poles = item.poles;
+    var resolvedVia = 'extraction';
 
-    if (item.fonte_polos === 'nao_disponivel_no_desenho' && match.status === 'confirmado') {
-      polos = match.candidates[0].polos;
-      resolvidoVia = 'catalogo';
+    if (item.pole_source === 'not_available' && match.status === 'confirmed') {
+      poles = match.candidates[0].poles;
+      resolvedVia = 'catalog';
     }
 
     return Object.assign({}, item, {
-      polos: polos,
-      resolvido_via: resolvidoVia,
+      poles: poles,
+      resolved_via: resolvedVia,
       matchStatus: match.status,
       matchCandidates: match.candidates,
-      showEvidencia: false,
+      showEvidence: false,
       showAddForm: false
     });
   });
@@ -26,23 +26,25 @@ function renderReview() {
   if (!extraction) return;
 
   buildReviewRows();
-  APP.reviewFilters = { tipo: '', tag: '' };
+  APP.reviewFilters = { type: '', tag: '' };
   APP.expandedGroups = {};
+  APP.previewZoom = 1;
   var tagInput = document.getElementById('filter-tag');
   if (tagInput) tagInput.value = '';
   renderReviewHeader();
   renderReviewPreview();
-  populateTipoFilterOptions();
+  populateTypeFilterOptions();
   renderReviewTable();
   wireReviewEvents();
   wireReviewFilters();
+  wireZoomControls();
 }
 
 function renderReviewHeader() {
   var el = document.getElementById('review-title');
   if (!el) return;
-  var d = APP.currentExtraction.desenho || {};
-  el.textContent = [d.numero, d.titulo, d.projeto].filter(Boolean).join(' — ') || 'Desenho analisado';
+  var d = APP.currentExtraction.drawing || {};
+  el.textContent = [d.number, d.title, d.project].filter(Boolean).join(' — ') || 'Drawing analyzed';
 }
 
 function renderReviewPreview() {
@@ -68,11 +70,11 @@ function renderReviewPreview() {
   if (f.isPdf) {
     content =
       '<div style="width:100%">' +
-      '<embed src="' + f.previewUrl + '" type="application/pdf">' +
-      '<p class="hint" style="padding:8px"><a href="' + f.previewUrl + '" target="_blank" rel="noopener">Abrir PDF em nova aba</a> se o preview não aparecer aqui.</p>' +
+      '<embed id="preview-zoom-target" src="' + f.previewUrl + '" type="application/pdf">' +
+      '<p class="hint" style="padding:8px"><a href="' + f.previewUrl + '" target="_blank" rel="noopener">Open PDF in a new tab</a> if the preview doesn\'t appear here.</p>' +
       '</div>';
   } else {
-    content = '<img src="' + f.previewUrl + '" alt="Desenho">';
+    content = '<img id="preview-zoom-target" src="' + f.previewUrl + '" alt="Drawing">';
   }
 
   wrap.innerHTML = tabs + content;
@@ -80,35 +82,70 @@ function renderReviewPreview() {
   wrap.querySelectorAll('[data-preview-index]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       APP.activePreviewIndex = parseInt(btn.dataset.previewIndex, 10);
+      APP.previewZoom = 1;
       renderReviewPreview();
     });
+  });
+
+  applyPreviewZoom();
+}
+
+var ZOOM_STEP = 0.25;
+var ZOOM_MIN = 0.5;
+var ZOOM_MAX = 3;
+
+function applyPreviewZoom() {
+  var target = document.getElementById('preview-zoom-target');
+  if (target) target.style.transform = 'scale(' + APP.previewZoom + ')';
+  var label = document.getElementById('zoom-level');
+  if (label) label.textContent = Math.round(APP.previewZoom * 100) + '%';
+}
+
+function wireZoomControls() {
+  var zoomIn = document.getElementById('zoom-in');
+  var zoomOut = document.getElementById('zoom-out');
+  var zoomReset = document.getElementById('zoom-reset');
+  if (!zoomIn || zoomIn.dataset.wired) return;
+  zoomIn.dataset.wired = '1';
+
+  zoomIn.addEventListener('click', function () {
+    APP.previewZoom = Math.min(ZOOM_MAX, Math.round((APP.previewZoom + ZOOM_STEP) * 100) / 100);
+    applyPreviewZoom();
+  });
+  zoomOut.addEventListener('click', function () {
+    APP.previewZoom = Math.max(ZOOM_MIN, Math.round((APP.previewZoom - ZOOM_STEP) * 100) / 100);
+    applyPreviewZoom();
+  });
+  zoomReset.addEventListener('click', function () {
+    APP.previewZoom = 1;
+    applyPreviewZoom();
   });
 }
 
 function confBadgeClass(conf) {
-  if (conf === 'baixa') return 'conf-baixa';
-  if (conf === 'media') return 'conf-media';
-  return 'conf-alta';
+  if (conf === 'low') return 'conf-low';
+  if (conf === 'medium') return 'conf-medium';
+  return 'conf-high';
 }
 
 function matchBadgeHtml(row) {
-  if (row.matchStatus === 'confirmado') {
-    return '<span class="badge badge-ok">✓ catálogo</span>';
+  if (row.matchStatus === 'confirmed') {
+    return '<span class="badge badge-ok">✓ catalog</span>';
   }
-  if (row.matchStatus === 'sugestao') {
-    return '<button class="evidencia-toggle" data-action="toggle-suggest">? sugestão (' + row.matchCandidates.length + ')</button>';
+  if (row.matchStatus === 'suggested') {
+    return '<button class="evidencia-toggle" data-action="toggle-suggest">? suggestion (' + row.matchCandidates.length + ')</button>';
   }
-  return '<span class="badge badge-muted">— sem match</span>';
+  return '<span class="badge badge-muted">— no match</span>';
 }
 
 function rowMatchesFilter(row) {
   var f = APP.reviewFilters;
-  if (f.tipo && row.tipo_componente !== f.tipo) return false;
+  if (f.type && row.component_type !== f.type) return false;
   if (f.tag && row.tag.toUpperCase().indexOf(f.tag.toUpperCase()) === -1) return false;
   return true;
 }
 
-function genericDescricao(desc) {
+function genericDescription(desc) {
   return String(desc || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
@@ -127,10 +164,10 @@ function tagRangeLabel(tags) {
   return tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '');
 }
 
-function worstConfianca(list) {
-  if (list.indexOf('baixa') !== -1) return 'baixa';
-  if (list.indexOf('media') !== -1) return 'media';
-  return 'alta';
+function worstConfidence(list) {
+  if (list.indexOf('low') !== -1) return 'low';
+  if (list.indexOf('medium') !== -1) return 'medium';
+  return 'high';
 }
 
 function aggregateValue(entries, getter) {
@@ -139,7 +176,7 @@ function aggregateValue(entries, getter) {
   return allSame ? vals[0] : null;
 }
 
-// Groups filtered {row, index} entries by tag prefix + tipo + generic description
+// Groups filtered {row, index} entries by tag prefix + type + generic description
 // (e.g. DCR1..DCR16 -> one group), so repeated tags collapse into an expandable
 // row showing quantity instead of flooding the table with near-identical rows.
 function buildGroups(entries) {
@@ -148,10 +185,10 @@ function buildGroups(entries) {
   entries.forEach(function (entry) {
     var row = entry.row;
     var prefix = tagPrefix(row.tag) || row.tag;
-    var desc = genericDescricao(row.descricao);
-    var key = prefix + '|' + row.tipo_componente + '|' + desc;
+    var desc = genericDescription(row.description);
+    var key = prefix + '|' + row.component_type + '|' + desc;
     if (!groups[key]) {
-      groups[key] = { key: key, tipo: row.tipo_componente, descricao: desc, entries: [] };
+      groups[key] = { key: key, type: row.component_type, description: desc, entries: [] };
       order.push(key);
     }
     groups[key].entries.push(entry);
@@ -161,71 +198,71 @@ function buildGroups(entries) {
 
 function groupHeaderRowHtml(g, gi, expanded) {
   var tags = g.entries.map(function (e) { return e.row.tag; });
-  var polos = aggregateValue(g.entries, function (e) { return e.row.polos; });
-  var fonte = aggregateValue(g.entries, function (e) { return e.row.fonte_polos; });
-  var fabricante = aggregateValue(g.entries, function (e) { return e.row.fabricante_marca; });
+  var poles = aggregateValue(g.entries, function (e) { return e.row.poles; });
+  var source = aggregateValue(g.entries, function (e) { return e.row.pole_source; });
+  var brand = aggregateValue(g.entries, function (e) { return e.row.brand; });
   var matchStatus = aggregateValue(g.entries, function (e) { return e.row.matchStatus; });
-  var resolvido = aggregateValue(g.entries, function (e) { return e.row.resolvido_via; });
-  var confianca = worstConfianca(g.entries.map(function (e) { return e.row.confianca; }));
+  var resolved = aggregateValue(g.entries, function (e) { return e.row.resolved_via; });
+  var confidence = worstConfidence(g.entries.map(function (e) { return e.row.confidence; }));
 
-  var sourceLabel = fonte !== null
-    ? ({ bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[fonte] || fonte)
-    : 'vários';
-  var catalogoLabel = matchStatus === null ? '<span class="hint">vários</span>' :
-    matchStatus === 'confirmado' ? '<span class="badge badge-ok">✓ catálogo</span>' :
-    matchStatus === 'sugestao' ? '<span class="badge badge-warn">? sugestão</span>' :
-    '<span class="badge badge-muted">— sem match</span>';
-  var statusLabel = resolvido === null ? 'vários' : (resolvido === 'manual' ? 'editado' : resolvido === 'catalogo' ? 'via catálogo' : 'via IA');
+  var sourceLabel = source !== null
+    ? ({ legend: 'Legend', symbol: 'Symbol', not_available: 'Not available' }[source] || source)
+    : 'various';
+  var catalogLabel = matchStatus === null ? '<span class="hint">various</span>' :
+    matchStatus === 'confirmed' ? '<span class="badge badge-ok">✓ catalog</span>' :
+    matchStatus === 'suggested' ? '<span class="badge badge-warn">? suggestion</span>' :
+    '<span class="badge badge-muted">— no match</span>';
+  var statusLabel = resolved === null ? 'various' : (resolved === 'manual' ? 'edited' : resolved === 'catalog' ? 'via catalog' : 'via AI');
 
-  return '<tr class="group-row ' + confBadgeClass(confianca) + '">' +
+  return '<tr class="group-row ' + confBadgeClass(confidence) + '">' +
     '<td><button class="group-toggle" data-action="toggle-group" data-group="' + gi + '">' +
       (expanded ? '▾' : '▸') + ' ' + escapeHtml(tagRangeLabel(tags)) +
       '</button><span class="group-qty">' + g.entries.length + 'x</span></td>' +
-    '<td>' + escapeHtml(g.descricao) + '</td>' +
-    '<td>' + escapeHtml(g.tipo) + '</td>' +
-    '<td>' + (fabricante !== null ? escapeHtml(fabricante) : '<span class="hint">vários</span>') + '</td>' +
-    '<td>' + (polos !== null ? escapeHtml(polos) : '<span class="hint">variável</span>') + '</td>' +
+    '<td>' + escapeHtml(g.description) + '</td>' +
+    '<td>' + escapeHtml(g.type) + '</td>' +
+    '<td>' + (brand !== null ? escapeHtml(brand) : '<span class="hint">various</span>') + '</td>' +
+    '<td>' + (poles !== null ? escapeHtml(poles) : '<span class="hint">varies</span>') + '</td>' +
     '<td>' + escapeHtml(sourceLabel) + '</td>' +
-    '<td>' + escapeHtml(confianca) + '</td>' +
-    '<td>' + catalogoLabel + '</td>' +
+    '<td>' + escapeHtml(confidence) + '</td>' +
+    '<td>' + catalogLabel + '</td>' +
     '<td class="hint">' + escapeHtml(statusLabel) + '</td>' +
     '</tr>';
 }
 
 function itemRowHtml(row, i, extraClass) {
-  var sourceLabel = { bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[row.fonte_polos] || row.fonte_polos;
+  var sourceLabel = { legend: 'Legend', symbol: 'Symbol', not_available: 'Not available' }[row.pole_source] || row.pole_source;
   var mainRow =
-    '<tr class="' + confBadgeClass(row.confianca) + (extraClass ? ' ' + extraClass : '') + '" data-row="' + i + '">' +
+    '<tr class="' + confBadgeClass(row.confidence) + (extraClass ? ' ' + extraClass : '') + '" data-row="' + i + '">' +
     '<td>' + escapeHtml(row.tag) + '</td>' +
-    '<td>' + escapeHtml(row.descricao) + '</td>' +
-    '<td>' + escapeHtml(row.tipo_componente) + '</td>' +
-    '<td>' + escapeHtml(row.fabricante_marca) + (row.referencia_fabricante ? '<br><span class="hint">' + escapeHtml(row.referencia_fabricante) + '</span>' : '') + '</td>' +
-    '<td><input type="number" min="0" class="polos-input" data-row="' + i + '" value="' + row.polos + '"></td>' +
+    '<td>' + escapeHtml(row.description) + '</td>' +
+    '<td>' + escapeHtml(row.component_type) + '</td>' +
+    '<td>' + escapeHtml(row.brand) + (row.manufacturer_reference ? '<br><span class="hint">' + escapeHtml(row.manufacturer_reference) + '</span>' : '') + '</td>' +
+    '<td><input type="number" min="0" class="polos-input" data-row="' + i + '" value="' + row.poles + '"></td>' +
     '<td>' + escapeHtml(sourceLabel) + '<br>' +
-      '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detalhe</button></td>' +
-    '<td>' + escapeHtml(row.confianca) + '</td>' +
+      '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detail</button></td>' +
+    '<td>' + escapeHtml(row.confidence) + '</td>' +
     '<td>' + matchBadgeHtml(row) +
-      (row.matchStatus === 'sem_correspondencia' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ adicionar ao catálogo</button>' : '') +
+      (row.matchStatus === 'no_match' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ add to catalog</button>' : '') +
       '</td>' +
-    '<td class="row-actions hint">' + (row.resolvido_via === 'manual' ? 'editado' : row.resolvido_via === 'catalogo' ? 'via catálogo' : 'via IA') + '</td>' +
+    '<td class="row-actions hint">' + (row.resolved_via === 'manual' ? 'edited' : row.resolved_via === 'catalog' ? 'via catalog' : 'via AI') + '</td>' +
     '</tr>';
 
-  var evidenciaRow =
+  var evidenceRow =
     '<tr class="evidencia-row" data-row-detail="' + i + '" style="display:none">' +
     '<td colspan="9"><div class="evidencia-detail show">' +
-    '<strong>Evidência:</strong> ' + escapeHtml(row.evidencia) + '<br>' +
-    '<strong>Folha:</strong> ' + escapeHtml(row.folha_origem) +
-    (row.observacoes ? '<br><strong>Obs.:</strong> ' + escapeHtml(row.observacoes) : '') +
+    '<strong>Evidence:</strong> ' + escapeHtml(row.evidence) + '<br>' +
+    '<strong>Sheet:</strong> ' + escapeHtml(row.sheet) +
+    (row.notes ? '<br><strong>Notes:</strong> ' + escapeHtml(row.notes) : '') +
     '</div></td></tr>';
 
   var suggestRow = '';
-  if (row.matchStatus === 'sugestao') {
+  if (row.matchStatus === 'suggested') {
     suggestRow =
       '<tr class="suggest-row" data-row-suggest="' + i + '" style="display:none"><td colspan="9"><div class="evidencia-detail show">' +
       row.matchCandidates.map(function (c, ci) {
-        return '<div style="margin-bottom:6px">' + escapeHtml(c.fabricante_marca) + ' ' + escapeHtml(c.referencia || c.padrao_tag) +
-          ' — ' + escapeHtml(c.aplicacao) + ' — <strong>' + escapeHtml(c.polos) + ' polos</strong> ' +
-          '<button data-action="accept-suggest" data-row="' + i + '" data-cand="' + ci + '">aceitar</button></div>';
+        return '<div style="margin-bottom:6px">' + escapeHtml(c.brand) + ' ' + escapeHtml(c.reference || c.tag_pattern) +
+          ' — ' + escapeHtml(c.application) + ' — <strong>' + escapeHtml(c.poles) + ' poles</strong> ' +
+          '<button data-action="accept-suggest" data-row="' + i + '" data-cand="' + ci + '">accept</button></div>';
       }).join('') +
       '</div></td></tr>';
   }
@@ -233,40 +270,40 @@ function itemRowHtml(row, i, extraClass) {
   var addFormRow =
     '<tr class="add-form-row" data-row-addform="' + i + '" style="display:none"><td colspan="9">' +
     '<div class="catalog-form">' +
-    '<label>Tipo<select class="inline-tipo"><option value="rele">rele</option><option value="disjuntor">disjuntor</option><option value="contator">contator</option><option value="chave">chave</option><option value="outro">outro</option></select></label>' +
-    '<label>Marca<input type="text" class="inline-marca" value="' + escapeHtml(row.fabricante_marca) + '"></label>' +
-    '<label>Referência<input type="text" class="inline-referencia" value="' + escapeHtml(row.referencia_fabricante) + '"></label>' +
-    '<label>Padrão de tag<input type="text" class="inline-tag" value="' + escapeHtml(tagPrefix(row.tag)) + '"></label>' +
-    '<label>Aplicação<input type="text" class="inline-aplicacao" value="' + escapeHtml(row.descricao) + '"></label>' +
-    '<label>Polos<input type="number" min="0" class="inline-polos"></label>' +
-    '</div><button data-action="save-add-form" data-row="' + i + '" style="margin-top:8px">Salvar no catálogo</button>' +
+    '<label>Type<select class="inline-tipo"><option value="relay">relay</option><option value="breaker">breaker</option><option value="contactor">contactor</option><option value="switch">switch</option><option value="other">other</option></select></label>' +
+    '<label>Brand<input type="text" class="inline-marca" value="' + escapeHtml(row.brand) + '"></label>' +
+    '<label>Reference<input type="text" class="inline-referencia" value="' + escapeHtml(row.manufacturer_reference) + '"></label>' +
+    '<label>Tag pattern<input type="text" class="inline-tag" value="' + escapeHtml(tagPrefix(row.tag)) + '"></label>' +
+    '<label>Application<input type="text" class="inline-aplicacao" value="' + escapeHtml(row.description) + '"></label>' +
+    '<label>Poles<input type="number" min="0" class="inline-polos"></label>' +
+    '</div><button data-action="save-add-form" data-row="' + i + '" style="margin-top:8px">Save to catalog</button>' +
     '</td></tr>';
 
-  return mainRow + evidenciaRow + suggestRow + addFormRow;
+  return mainRow + evidenceRow + suggestRow + addFormRow;
 }
 
-function populateTipoFilterOptions() {
+function populateTypeFilterOptions() {
   var select = document.getElementById('filter-tipo');
   if (!select) return;
   var current = select.value;
   var types = [];
   APP.reviewRows.forEach(function (row) {
-    if (row.tipo_componente && types.indexOf(row.tipo_componente) === -1) types.push(row.tipo_componente);
+    if (row.component_type && types.indexOf(row.component_type) === -1) types.push(row.component_type);
   });
   types.sort();
-  select.innerHTML = '<option value="">Todos os tipos</option>' +
+  select.innerHTML = '<option value="">All types</option>' +
     types.map(function (t) { return '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>'; }).join('');
   select.value = types.indexOf(current) !== -1 ? current : '';
 }
 
 function wireReviewFilters() {
-  var tipoSelect = document.getElementById('filter-tipo');
+  var typeSelect = document.getElementById('filter-tipo');
   var tagInput = document.getElementById('filter-tag');
-  if (!tipoSelect || tipoSelect.dataset.wired) return;
-  tipoSelect.dataset.wired = '1';
+  if (!typeSelect || typeSelect.dataset.wired) return;
+  typeSelect.dataset.wired = '1';
 
-  tipoSelect.addEventListener('change', function () {
-    APP.reviewFilters.tipo = tipoSelect.value;
+  typeSelect.addEventListener('change', function () {
+    APP.reviewFilters.type = typeSelect.value;
     renderReviewTable();
   });
   tagInput.addEventListener('input', function () {
@@ -282,7 +319,7 @@ function renderReviewTable() {
   if (!body) return;
 
   if (!APP.reviewRows.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum componente identificado.</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty-state">No component identified.</td></tr>';
     updateFilterCount(0, 0);
     return;
   }
@@ -293,7 +330,7 @@ function renderReviewTable() {
   });
 
   if (!entries.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum item bate com o filtro atual.</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="empty-state">No item matches the current filter.</td></tr>';
     updateFilterCount(0, APP.reviewRows.length);
     return;
   }
@@ -317,7 +354,7 @@ function renderReviewTable() {
   // set select values that can't be set via value attribute above
   entries.forEach(function (entry) {
     var formRow = body.querySelector('[data-row-addform="' + entry.index + '"]');
-    if (formRow) formRow.querySelector('.inline-tipo').value = entry.row.tipo_componente;
+    if (formRow) formRow.querySelector('.inline-tipo').value = entry.row.component_type;
   });
 
   updateFilterCount(entries.length, APP.reviewRows.length);
@@ -326,7 +363,7 @@ function renderReviewTable() {
 function updateFilterCount(visible, total) {
   var el = document.getElementById('filter-count');
   if (!el) return;
-  el.textContent = (visible === total) ? (total + ' itens') : (visible + ' de ' + total + ' itens');
+  el.textContent = (visible === total) ? (total + ' items') : (visible + ' of ' + total + ' items');
 }
 
 function wireReviewEvents() {
@@ -337,10 +374,10 @@ function wireReviewEvents() {
   body.addEventListener('input', function (evt) {
     if (evt.target.classList.contains('polos-input')) {
       var i = parseInt(evt.target.dataset.row, 10);
-      APP.reviewRows[i].polos = parseInt(evt.target.value, 10) || 0;
-      APP.reviewRows[i].resolvido_via = 'manual';
+      APP.reviewRows[i].poles = parseInt(evt.target.value, 10) || 0;
+      APP.reviewRows[i].resolved_via = 'manual';
       var tr = body.querySelector('tr[data-row="' + i + '"] td:last-child');
-      if (tr) tr.textContent = 'editado';
+      if (tr) tr.textContent = 'edited';
     }
   });
 
@@ -374,8 +411,8 @@ function wireReviewEvents() {
 
     if (action === 'accept-suggest') {
       var cand = APP.reviewRows[i].matchCandidates[parseInt(btn.dataset.cand, 10)];
-      APP.reviewRows[i].polos = cand.polos;
-      APP.reviewRows[i].resolvido_via = 'catalogo';
+      APP.reviewRows[i].poles = cand.poles;
+      APP.reviewRows[i].resolved_via = 'catalog';
       renderReviewTable();
     }
 
@@ -387,16 +424,16 @@ function wireReviewEvents() {
     if (action === 'save-add-form') {
       var formRow = body.querySelector('[data-row-addform="' + i + '"]');
       var fields = {
-        tipo_componente: formRow.querySelector('.inline-tipo').value,
-        fabricante_marca: formRow.querySelector('.inline-marca').value.trim(),
-        referencia: formRow.querySelector('.inline-referencia').value.trim(),
-        padrao_tag: formRow.querySelector('.inline-tag').value.trim(),
-        aplicacao: formRow.querySelector('.inline-aplicacao').value.trim(),
-        polos: parseInt(formRow.querySelector('.inline-polos').value, 10) || 0,
-        notas: 'Adicionado durante revisão do desenho ' + ((APP.currentExtraction.desenho || {}).numero || '')
+        component_type: formRow.querySelector('.inline-tipo').value,
+        brand: formRow.querySelector('.inline-marca').value.trim(),
+        reference: formRow.querySelector('.inline-referencia').value.trim(),
+        tag_pattern: formRow.querySelector('.inline-tag').value.trim(),
+        application: formRow.querySelector('.inline-aplicacao').value.trim(),
+        poles: parseInt(formRow.querySelector('.inline-polos').value, 10) || 0,
+        notes: 'Added while reviewing drawing ' + ((APP.currentExtraction.drawing || {}).number || '')
       };
       createCatalogEntry(fields).then(function () {
-        toast('Item cadastrado no catálogo');
+        toast('Item added to catalog');
         buildReviewRows();
         renderReviewTable();
       });
@@ -405,24 +442,24 @@ function wireReviewEvents() {
 }
 
 function confirmReviewList() {
-  if (!APP.reviewRows.length) { toast('Nada para confirmar'); return; }
+  if (!APP.reviewRows.length) { toast('Nothing to confirm'); return; }
   var record = {
     id: uuid(),
-    desenho: APP.currentExtraction.desenho || {},
-    componentes: APP.reviewRows.map(function (r) {
+    drawing: APP.currentExtraction.drawing || {},
+    components: APP.reviewRows.map(function (r) {
       return {
-        tag: r.tag, descricao: r.descricao, tipo_componente: r.tipo_componente,
-        fabricante_marca: r.fabricante_marca, referencia_fabricante: r.referencia_fabricante,
-        polos: r.polos, fonte_polos: r.fonte_polos, evidencia: r.evidencia,
-        confianca: r.confianca, folha_origem: r.folha_origem, resolvido_via: r.resolvido_via
+        tag: r.tag, description: r.description, component_type: r.component_type,
+        brand: r.brand, manufacturer_reference: r.manufacturer_reference,
+        poles: r.poles, pole_source: r.pole_source, evidence: r.evidence,
+        confidence: r.confidence, sheet: r.sheet, resolved_via: r.resolved_via
       };
     }),
-    confirmado_em: new Date().toISOString()
+    confirmed_at: new Date().toISOString()
   };
   APP.drawings.push(record);
   saveStore('drawings', APP.drawings).then(function () {
-    toast('Lista confirmada e salva no histórico');
+    toast('List confirmed and saved to history');
   }).catch(function (err) {
-    toast('Erro ao salvar: ' + err.message);
+    toast('Error saving: ' + err.message);
   });
 }

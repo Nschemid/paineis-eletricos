@@ -1,118 +1,117 @@
-const PROMPT = `Você é um especialista em leitura de desenhos elétricos de quadros de comando/força
-industriais. Analise o arquivo anexado (foto ou PDF, podendo ter múltiplas páginas/folhas)
-e extraia a lista de componentes (relés, disjuntores, contatores, chaves), com foco
-especial em determinar corretamente o NÚMERO DE POLOS de cada um.
+const PROMPT = `You are an expert at reading industrial control/power panel electrical drawings.
+Analyze the attached file (a photo or a PDF, possibly with multiple pages/sheets) and
+extract the list of components (relays, breakers, contactors, switches), with special
+focus on correctly determining the NUMBER OF POLES for each one.
 
-Este arquivo pode ser UMA folha de um conjunto maior de desenhos do mesmo projeto (outras
-folhas foram ou serão analisadas separadamente) — extraia tudo que for identificável NESTE
-arquivo mesmo que a informação pareça incompleta sem ver as outras folhas (ex: um relé com
-tag e função mas sem polos determinável é um resultado válido e esperado, não um problema).
+This file may be ONE sheet from a larger set of drawings for the same project (other
+sheets were or will be analyzed separately) — extract everything identifiable IN THIS
+file even if the information seems incomplete without seeing the other sheets (e.g. a
+relay with a tag and function but no determinable pole count is a valid, expected result).
 
-O número de polos pode vir de TRÊS fontes distintas — classifique cada componente
-corretamente em "fonte_polos":
+The pole count can come from THREE distinct sources — classify each component correctly
+in "pole_source":
 
-1. "bom" — a legenda/tabela de relés ou lista de materiais no próprio desenho ESTABELECE
-   o polos diretamente em texto. Isso é raro — normalmente a legenda só dá tag + função
-   (ex: "DCR1 DAMPER CONTROL RELAY"), não o número de polos.
+1. "legend" — the relay legend/BOM table on the drawing itself STATES the pole count
+   directly in text. This is rare — usually the legend only gives tag + function
+   (e.g. "DCR1 DAMPER CONTROL RELAY"), not the pole count.
 
-2. "simbolo" — em diagramas unifilares de força, o número de polos de um disjuntor/chave
-   é determinado CONTANDO visualmente quantas barras de fase (N/A/B/C) o símbolo do
-   disjuntor efetivamente conecta/comuta no desenho. Um disjuntor alimentando um motor ou
-   VSD trifásico normalmente toca A/B/C (3 polos, sem neutro); um disjuntor alimentando um
-   transformador de comando monofásico toca 1 fase + neutro (1 polo).
-   ATENÇÃO: não assuma o número de polos por analogia com posições vizinhas no mesmo
-   quadro — cada símbolo deve ser inspecionado individualmente. Posições de reserva
-   (spare) sem rótulo de carga são visualmente distintas dos circuitos carregados ao
-   lado e frequentemente têm um número de polos diferente dos vizinhos. Descreva em
-   "evidencia" exatamente quais barras/fases o símbolo toca — não escreva apenas "3 polos",
-   escreva algo como "toca barras A/B/C, não toca N" ou "único símbolo de contato entre as
-   barras, sem carga rotulada embaixo".
-   ATENÇÃO 2: um disjuntor de reserva (spare) sem carga é um COMPONENTE PRÓPRIO, com seu
-   próprio símbolo e seu próprio polos — mesmo sem rótulo de carga associado. Um texto
-   curto perto dele (ex: "N2", "N3") é o TAG desse disjuntor, não uma indicação de que
-   ele está ligado ao condutor neutro — não confunda a etiqueta/tag de um componente com
-   o nome de uma barra ou condutor. Se não tiver certeza se um texto é tag de componente
-   ou rótulo de barra, diga isso explicitamente em "evidencia" em vez de assumir.
+2. "symbol" — on single-line power diagrams, the pole count of a breaker/switch is
+   determined by visually COUNTING how many phase busbars (N/A/B/C) the breaker symbol
+   actually connects to/switches in the drawing. A breaker feeding a three-phase motor
+   or VSD typically touches A/B/C (3 poles, no neutral); a breaker feeding a single-phase
+   control transformer touches 1 phase + neutral (1 pole).
+   WARNING: do not assume the pole count by analogy with neighboring positions in the
+   same panel — each symbol must be inspected individually. Spare positions with no
+   labeled load are visually distinct from the loaded circuits next to them and often
+   have a different pole count than their neighbors. Describe in "evidence" exactly
+   which busbars/phases the symbol touches — don't just write "3 poles", write something
+   like "touches busbars A/B/C, not N" or "single contact symbol between busbars, no
+   labeled load beneath it".
+   WARNING 2: a spare breaker with no load is its OWN COMPONENT, with its own symbol
+   and its own pole count — even without an associated load label. A short text near it
+   (e.g. "N2", "N3") is that breaker's TAG, not an indication that it's connected to the
+   neutral conductor — don't confuse a component's label/tag with a busbar/conductor
+   name. If you're not sure whether a text is a component tag or a busbar label, say so
+   explicitly in "evidence" instead of assuming.
 
-3. "nao_disponivel_no_desenho" — o desenho dá apenas marca/tag/função (ex: "DCR1 DAMPER
-   CONTROL RELAY" ou "SIEMENS 3RT20...") SEM número de polos determinável nem por texto
-   nem por símbolo. Isso é o caso MAIS COMUM para relés e contatores/sobrecargas — não é
-   exceção, é a maioria dos casos reais. Nestes casos, "polos" deve ser 0 e
-   "referencia_fabricante" deve conter o que estiver disponível no desenho (mesmo que
-   incompleto/truncado, ex: "3RT20..."), para permitir cruzamento posterior com catálogo.
-   NÃO invente ou estime um número de polos nesses casos — é preferível marcar como não
-   disponível do que arriscar um número errado, já que essa informação alimenta decisão
-   de compra.
+3. "not_available" — the drawing only gives brand/tag/function (e.g. "DCR1 DAMPER
+   CONTROL RELAY" or "SIEMENS 3RT20...") WITHOUT a determinable pole count either from
+   text or symbol. This is the MOST COMMON case for relays and contactors/overloads —
+   it's not an exception, it's the majority of real cases. In these cases, "poles" must
+   be 0 and "manufacturer_reference" should contain whatever is available on the drawing
+   (even if incomplete/truncated, e.g. "3RT20..."), to allow later cross-referencing
+   against a catalog. DO NOT invent or estimate a pole count in these cases — it's
+   better to mark it as not available than to risk a wrong number, since this data
+   feeds a purchasing decision.
 
-Para cada componente, preencha "evidencia" com uma descrição específica e verificável
-do que foi lido no desenho (texto exato da legenda, ou descrição de quais fases o
-símbolo toca, ou "nenhuma informação de polos no desenho, apenas marca X e tag Y") —
-este campo será usado por uma pessoa para conferir e pegar erros de interpretação visual,
-então seja concreto e específico, não genérico.
+For each component, fill "evidence" with a specific, verifiable description of what was
+read on the drawing (exact legend text, or a description of which phases the symbol
+touches, or "no pole information on the drawing, only brand X and tag Y") — this field
+will be used by a person to double-check and catch visual interpretation errors, so be
+concrete and specific, not generic.
 
-Se o arquivo tiver múltiplas páginas/folhas, preencha "folha_origem" com o número ou
-título da folha onde cada componente foi encontrado, para permitir voltar exatamente
-naquele ponto do desenho.
+If the file has multiple pages/sheets, fill "sheet" with the number or title of the
+sheet where each component was found, so the person can go back to exactly that spot
+on the drawing.
 
-Retorne a lista de TODOS os componentes de comando/proteção identificáveis (relés,
-disjuntores, contatores, chaves seccionadoras) — não pule itens só porque o polos não
-é determinável, isso é informação útil por si só.
+Return the list of ALL identifiable control/protection components (relays, breakers,
+contactors, disconnect switches) — don't skip items just because the pole count isn't
+determinable, that's useful information on its own.
 
-MUITO IMPORTANTE — ENUMERAÇÃO COMPLETA, NÃO RESUMO POR TIPO: isto é uma lista de
-materiais para COMPRA, então a QUANTIDADE de cada item importa tanto quanto o tipo. Se o
-desenho tem uma legenda ou tabela com vários relés do mesmo tipo em sequência (ex:
-"DCR1" até "DCR16", ou "RST1" até "RST11", ou "FR1" até "FR11"), você DEVE retornar UM
-COMPONENTE SEPARADO PARA CADA TAG INDIVIDUAL (DCR1, DCR2, DCR3, ..., DCR16 — dezesseis
-entradas distintas, não uma só "DCR" representando o grupo). NUNCA resuma uma sequência
-de tags numerados em um único exemplo representativo — isso faz a lista de materiais
-subestimar a quantidade real a comprar. Se a mesma evidência/legenda se aplica a toda a
-sequência, repita a mesma "evidencia" em cada entrada, mas ainda assim gere uma entrada
-por tag.
+VERY IMPORTANT — FULL ENUMERATION, DO NOT SUMMARIZE BY TYPE: this is a materials list
+for PURCHASING, so the QUANTITY of each item matters as much as the type. If the
+drawing has a legend or table with several relays of the same type in sequence (e.g.
+"DCR1" through "DCR16", or "RST1" through "RST11", or "FR1" through "FR11"), you MUST
+return ONE SEPARATE COMPONENT FOR EACH INDIVIDUAL TAG (DCR1, DCR2, DCR3, ..., DCR16 —
+sixteen distinct entries, not a single "DCR" representing the group). NEVER summarize a
+sequence of numbered tags into one representative example — that makes the materials
+list underestimate the real purchase quantity. If the same evidence/legend applies to
+the whole sequence, repeat the same "evidence" in each entry, but still produce one
+entry per tag.
 
-MUITO IMPORTANTE — SEJA CONCISO EM CADA CAMPO DE TEXTO LIVRE: desenhos com muitos
-componentes (dezenas de relés, por exemplo) geram respostas grandes, e respostas muito
-longas podem estourar o tempo de execução do servidor. Mantenha "evidencia" em no
-máximo 1 frase curta (ideal: menos de 15 palavras) — específica o suficiente pra
-conferir contra o desenho, mas sem elaborar. Deixe "observacoes" vazio a menos que
-seja realmente necessário, e "notas_gerais" em no máximo 1-2 frases. Não sacrifique a
-enumeração completa de tags por causa disso — corte o tamanho do texto, não a
-quantidade de itens.`;
+VERY IMPORTANT — BE CONCISE IN EVERY FREE-TEXT FIELD: drawings with many components
+(dozens of relays, for example) produce large responses, and very long responses can
+exceed the server's execution time. Keep "evidence" to at most 1 short sentence
+(ideally under 15 words) — specific enough to check against the drawing, but not
+elaborated. Leave "notes" empty unless truly necessary, and "general_notes" to at
+most 1-2 sentences. Don't sacrifice full tag enumeration because of this — cut text
+length, not item count.`;
 
 const responseSchema = {
   type: "OBJECT",
   properties: {
-    desenho: {
+    drawing: {
       type: "OBJECT",
       properties: {
-        numero: { type: "STRING" },
-        titulo: { type: "STRING" },
-        projeto: { type: "STRING" },
+        number: { type: "STRING" },
+        title: { type: "STRING" },
+        project: { type: "STRING" },
       },
-      required: ["numero"],
+      required: ["number"],
     },
-    componentes: {
+    components: {
       type: "ARRAY",
       items: {
         type: "OBJECT",
         properties: {
           tag: { type: "STRING" },
-          descricao: { type: "STRING" },
-          tipo_componente: { type: "STRING", enum: ["rele", "disjuntor", "contator", "chave", "outro"] },
-          fabricante_marca: { type: "STRING" },
-          referencia_fabricante: { type: "STRING" },
-          polos: { type: "INTEGER" },
-          fonte_polos: { type: "STRING", enum: ["bom", "simbolo", "nao_disponivel_no_desenho"] },
-          evidencia: { type: "STRING" },
-          confianca: { type: "STRING", enum: ["alta", "media", "baixa"] },
-          folha_origem: { type: "STRING" },
-          observacoes: { type: "STRING" },
+          description: { type: "STRING" },
+          component_type: { type: "STRING", enum: ["relay", "breaker", "contactor", "switch", "other"] },
+          brand: { type: "STRING" },
+          manufacturer_reference: { type: "STRING" },
+          poles: { type: "INTEGER" },
+          pole_source: { type: "STRING", enum: ["legend", "symbol", "not_available"] },
+          evidence: { type: "STRING" },
+          confidence: { type: "STRING", enum: ["high", "medium", "low"] },
+          sheet: { type: "STRING" },
+          notes: { type: "STRING" },
         },
-        required: ["tag", "descricao", "tipo_componente", "fonte_polos", "polos", "evidencia", "confianca", "folha_origem"],
+        required: ["tag", "description", "component_type", "pole_source", "poles", "evidence", "confidence", "sheet"],
       },
     },
-    notas_gerais: { type: "STRING" },
+    general_notes: { type: "STRING" },
   },
-  required: ["desenho", "componentes"],
+  required: ["drawing", "components"],
 };
 
 async function callGemini(apiKey, file, mimeType, name) {
@@ -121,7 +120,7 @@ async function callGemini(apiKey, file, mimeType, name) {
   const geminiBody = {
     contents: [{
       parts: [
-        { text: PROMPT + (name ? `\n\nNome do arquivo: ${name}` : "") },
+        { text: PROMPT + (name ? `\n\nFile name: ${name}` : "") },
         { inlineData: { mimeType, data: file } },
       ],
     }],

@@ -1,52 +1,51 @@
-# Catálogo — forma dos dados e algoritmo de matching
+# Catalog — data shape and matching algorithm
 
-Store Netlify Blobs `catalog` (via `netlify/functions/data.mjs?store=catalog`), um blob
-só contendo o array inteiro em JSON. Começa vazio — não popular com dados fictícios.
+Netlify Blobs store `catalog` (via `netlify/functions/data.mjs?store=catalog`), a single
+blob holding the whole array as JSON. Starts empty — never seed it with fake data.
 
-## Forma de cada item
+## Item shape
 
 ```json
 {
   "id": "uuid-v4",
-  "tipo_componente": "rele",
-  "fabricante_marca": "WEIDMULLER",
-  "referencia": "",
-  "padrao_tag": "DCR",
-  "aplicacao": "relé de interposição para comando de damper / partida de ventilador",
-  "polos": 1,
-  "notas": "relé padrão da empresa para sinalização de partida/parada de ventiladores",
-  "criado_em": "2026-07-18T12:00:00.000Z",
-  "atualizado_em": "2026-07-18T12:00:00.000Z"
+  "component_type": "relay",
+  "brand": "WEIDMULLER",
+  "reference": "",
+  "tag_pattern": "DCR",
+  "application": "damper control interposing relay / fan start-stop",
+  "poles": 1,
+  "notes": "company-standard relay for fan start/stop signaling",
+  "created_at": "2026-07-18T12:00:00.000Z",
+  "updated_at": "2026-07-18T12:00:00.000Z"
 }
 ```
 
-`referencia` e `padrao_tag` são opcionais de propósito: como a maioria dos desenhos
-reais não traz o part number completo do fabricante (ver `extraction-schema.md`), o
-catálogo precisa casar também por tipo + padrão de tag + aplicação, não só por
-referência exata.
+`reference` and `tag_pattern` are optional on purpose: since most real drawings don't
+carry the manufacturer's full part number (see `extraction-schema.md`), the catalog
+also needs to match by type + tag pattern + application, not just exact reference.
 
-## Algoritmo de matching (`js/match.js`, roda no cliente, sem lógica no backend)
+## Matching algorithm (`js/match.js`, runs client-side, no backend logic)
 
-Três níveis, o primeiro que bater vence:
+Three tiers, first hit wins:
 
-1. **Referência exata/prefixo** — normaliza (`toUpperCase`, remove espaços/hífens) e
-   compara `referencia_fabricante` do item extraído com `referencia` do catálogo via
-   igualdade ou `startsWith` nos dois sentidos (cobre "SIEMENS 3RT20..." truncado do
-   desenho casando com "3RT2016-1BB41" completo do catálogo), só quando
-   `fabricante_marca` bate também (quando presente nos dois lados).
-2. **Padrão de tag** — tira os dígitos finais do `tag` (`DCR1` → `DCR`) e compara com
-   `padrao_tag` do catálogo, combinado com `tipo_componente` igual.
-3. **Tipo + aplicação (fuzzy simples)** — `tipo_componente` + `fabricante_marca` (se
-   presente) + interseção de palavras entre `descricao`/`evidencia` do item e
-   `aplicacao` do catálogo (minúsculo, split por espaço, conta palavras em comum acima
-   de um limiar pequeno). Sem lib externa, sem embeddings.
+1. **Exact/prefix reference** — normalize (`toUpperCase`, strip spaces/hyphens) and
+   compare the extracted item's `manufacturer_reference` against the catalog's
+   `reference` via equality or `startsWith` in either direction (covers a drawing's
+   truncated "SIEMENS 3RT20..." matching a full catalog "3RT2016-1BB41"), only when
+   `brand` also matches (when present on both sides).
+2. **Tag pattern** — strip trailing digits from `tag` (`DCR1` → `DCR`) and compare
+   against the catalog's `tag_pattern`, combined with equal `component_type`.
+3. **Type + application (simple fuzzy match)** — `component_type` + `brand` (if
+   present) + word overlap between the item's `description`/`evidence` and the
+   catalog's `application` (lowercase, split on whitespace, count shared words above a
+   small threshold). No external library, no embeddings.
 
-## Status resultante por linha
+## Resulting status per row
 
-- `confirmado` — nível 1 ou 2, candidato único
-- `sugestao` — nível 3, ou múltiplos candidatos em qualquer nível (mostrado como chip
-  clicável, nunca aplicado automaticamente)
-- `sem_correspondencia` — nenhum candidato
+- `confirmed` — tier 1 or 2, single candidate
+- `suggested` — tier 3, or multiple candidates at any tier (shown as a clickable chip,
+  never auto-applied)
+- `no_match` — no candidate
 
-Em todos os casos, `polos` na tabela de revisão continua editável — catálogo só
-pré-preenche, a usuária decide.
+In every case, `poles` stays editable on the review table — the catalog only
+pre-fills it, the user decides.

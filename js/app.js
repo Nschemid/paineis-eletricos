@@ -4,8 +4,9 @@ var APP = {
   currentExtraction: null,
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
+  previewZoom: 1,
   reviewRows: [],
-  reviewFilters: { tipo: '', tag: '' },
+  reviewFilters: { type: '', tag: '' },
   expandedGroups: {}
 };
 
@@ -47,7 +48,7 @@ function saveStore(store, arrayData) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(arrayData)
   }).then(function (res) {
-    if (!res.ok) throw new Error('Falha ao salvar em ' + store);
+    if (!res.ok) throw new Error('Failed to save to ' + store);
     return res.json();
   });
 }

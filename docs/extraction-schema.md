@@ -1,85 +1,85 @@
-# Schema de extração
+# Extraction schema
 
-Implementado em `netlify/functions/analyze-drawing.mjs` (function síncrona normal). O
-prompt completo e o `responseSchema` (dialeto Gemini, tipos em maiúsculo) vivem no
-código-fonte da function — este arquivo documenta a forma dos dados pra quem for
-consumir o resultado no frontend.
+Implemented in `netlify/functions/analyze-drawing.mjs` (a normal synchronous function).
+The full prompt and the `responseSchema` (Gemini's dialect, uppercase types) live in the
+function's source code — this file documents the data shape for anyone consuming the
+result on the frontend.
 
-## Um arquivo por chamada, mesclado no cliente
+## One file per call, merged client-side
 
-`analyze-drawing.mjs` recebe **um arquivo por vez** (`{file, mimeType, name}`). Quando
-a usuária sobe várias folhas juntas, `js/upload.js` chama a function **uma vez por
-arquivo, em sequência**, e mescla os `componentes` de todas as respostas no cliente
-(`mergeExtractions()`), deduplicando por `tag + tipo_componente` — se o mesmo tag
-aparecer em duas folhas, fica só uma entrada, preferindo a versão que já tem `polos`
-determinado sobre a `nao_disponivel_no_desenho`.
+`analyze-drawing.mjs` receives **one file at a time** (`{file, mimeType, name}`). When
+the user uploads several sheets together, `js/upload.js` calls the function **once per
+file, in sequence**, and merges the `components` from all responses client-side
+(`mergeExtractions()`), deduplicating by `tag + component_type` — if the same tag shows
+up on two sheets, only one entry remains, preferring the version that already has
+`poles` determined over `not_available`.
 
-**Por que não é uma chamada só com todos os arquivos:** foi a primeira tentativa e não
-funcionou de forma confiável neste projeto:
-- Uma chamada síncrona só com 4 PDFs juntos passa do limite de ~10s de execução de uma
-  Netlify Function normal (erro "Inactivity Timeout").
-- A alternativa óbvia — rodar como **Background Function** (até 15 min de execução) —
-  não chegou a executar de verdade: jobs ficaram presos em "pending" indefinidamente,
-  mesmo bem depois da janela de 15 minutos. O mais provável é Background Functions
-  serem recurso de plano pago do Netlify, não disponível no free tier usado aqui. Não
-  foi possível confirmar pelos logs (sem acesso ao dashboard/CLI no ambiente de
-  desenvolvimento), então isso fica registrado como hipótese, não certeza — se o site
-  migrar pra um plano pago, vale reconsiderar essa arquitetura pra recuperar o cruzamento
-  de informação entre folhas na mesma chamada de IA (ver abaixo).
+**Why it's not one call with all files at once:** that was the first approach tried and
+it wasn't reliable in this project:
+- A single synchronous call with 4 PDFs together exceeds the ~10s execution limit of a
+  normal Netlify Function ("Inactivity Timeout" error).
+- The obvious alternative — running as a **Background Function** (up to 15 min
+  execution) — never actually executed: jobs got stuck at "pending" indefinitely, well
+  past the 15-minute window. Most likely Background Functions are a paid-plan feature,
+  not available on the free tier used here. Couldn't confirm from logs (no
+  dashboard/CLI access in the dev environment), so this is recorded as a hypothesis, not
+  a certainty — worth reconsidering if the site moves to a paid plan (would recover
+  cross-sheet reasoning within the same AI call, see below).
 
-**Custo dessa decisão:** cada arquivo é analisado isoladamente pela IA — ela não vê as
-outras folhas ao processar uma, então não cruza "legenda de relé na folha X" com
-"símbolo no diagrama unifilar da folha Y" dentro do mesmo raciocínio. Isso é uma perda
-real de precisão em alguns casos, mas ainda assim cada folha extrai corretamente o que
-está determinável nela mesma (testado com os 4 desenhos reais do projeto R-MSSB7-ESS).
+**Cost of this decision:** each file is analyzed in isolation by the AI — it doesn't see
+the other sheets while processing one, so it doesn't cross-reference "relay legend on
+sheet X" with "symbol on the single-line diagram on sheet Y" within the same reasoning
+pass. That's a real precision loss in some cases, but each sheet still correctly
+extracts whatever is determinable on its own (tested against the 4 real drawings from
+the R-MSSB7-ESS project).
 
-## Resposta
+## Response
 
 ```json
 {
-  "desenho": { "numero": "ME332", "titulo": "SWITCHBOARD LAYOUT", "projeto": "R-MSSB7-ESS" },
-  "componentes": [
+  "drawing": { "number": "ME332", "title": "SWITCHBOARD LAYOUT", "project": "R-MSSB7-ESS" },
+  "components": [
     {
       "tag": "DCR1",
-      "descricao": "DAMPER CONTROL RELAY",
-      "tipo_componente": "rele",
-      "fabricante_marca": "WEIDMULLER",
-      "referencia_fabricante": "",
-      "polos": 0,
-      "fonte_polos": "nao_disponivel_no_desenho",
-      "evidencia": "Legenda de relés lista 'DCR1 DAMPER CONTROL RELAY, GF-MFD1' — dá tag e função, não modelo nem polos.",
-      "confianca": "alta",
-      "folha_origem": "ME333",
-      "observacoes": ""
+      "description": "DAMPER CONTROL RELAY",
+      "component_type": "relay",
+      "brand": "WEIDMULLER",
+      "manufacturer_reference": "",
+      "poles": 0,
+      "pole_source": "not_available",
+      "evidence": "Relay legend lists 'DCR1 DAMPER CONTROL RELAY, GF-MFD1' — gives tag and function, not model or poles.",
+      "confidence": "high",
+      "sheet": "ME333",
+      "notes": ""
     }
   ],
-  "notas_gerais": ""
+  "general_notes": ""
 }
 ```
 
-## Os 3 valores de `fonte_polos`
+## The 3 values of `pole_source`
 
-| Valor | Significado | Frequência esperada |
+| Value | Meaning | Expected frequency |
 |---|---|---|
-| `bom` | Legenda/tabela do desenho diz o polos em texto | Raro |
-| `simbolo` | Polos determinado contando barras de fase (N/A/B/C) que o símbolo toca no diagrama unifilar | Comum em disjuntores/chaves |
-| `nao_disponivel_no_desenho` | Desenho só dá marca/tag/função, sem polos determinável | **Maioria dos casos**, principalmente relés e contatores |
+| `legend` | The drawing's legend/BOM table states the pole count in text | Rare |
+| `symbol` | Pole count determined by counting phase busbars (N/A/B/C) the symbol touches on the single-line diagram | Common for breakers/switches |
+| `not_available` | The drawing only gives brand/tag/function, no determinable pole count | **Most cases**, mainly relays and contactors |
 
-Quando `fonte_polos` é `nao_disponivel_no_desenho`, `polos` vem `0` (sentinela) e a
-resolução acontece na tela de revisão via cross-reference com o catálogo (ver
-`catalog-schema.md`) ou entrada manual da usuária.
+When `pole_source` is `not_available`, `poles` comes back `0` (sentinel) and resolution
+happens on the review screen via catalog cross-reference (see `catalog-schema.md`) or
+manual entry.
 
-## Campo `evidencia`
+## The `evidence` field
 
-Obrigatório, texto livre, sem limite de tamanho. Precisa ser específico o suficiente
-pra uma pessoa conferir contra o desenho original sem precisar reabrir tudo do zero —
-cita o texto exato da legenda, ou descreve concretamente quais barras/fases o símbolo
-toca. "3 polos" sozinho não é evidência aceitável; o prompt instrui o modelo a nunca
-devolver isso sem a descrição do que foi visto.
+Required, free text, no length limit. Needs to be specific enough for a person to
+double-check against the original drawing without reopening everything from scratch —
+it quotes the exact legend text, or concretely describes which busbars/phases the
+symbol touches. "3 poles" alone isn't acceptable evidence; the prompt instructs the
+model to never return that without describing what it actually saw.
 
-## Campo `resolvido_via` (só na tela de revisão, não faz parte da extração)
+## The `resolved_via` field (review screen only, not part of extraction)
 
-Adicionado no cliente ao salvar a lista revisada: `"extracao"` (valor veio direto da IA,
-sem intervenção), `"catalogo"` (usuária aceitou uma sugestão do catálogo), `"manual"`
-(usuária digitou/editou o valor). Serve pra rastrear a origem real do dado que vai pra
-compra, separado da origem que a IA leu no desenho.
+Added client-side when saving the reviewed list: `"extraction"` (value came straight
+from the AI, no intervention), `"catalog"` (user accepted a catalog suggestion),
+`"manual"` (user typed/edited the value). Tracks the real origin of the data that feeds
+the purchase decision, separate from what the AI read on the drawing.

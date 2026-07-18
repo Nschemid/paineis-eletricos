@@ -16,13 +16,13 @@ function wordOverlapScore(a, b) {
 }
 
 function matchByReference(item, catalog) {
-  var ref = normalizeRef(item.referencia_fabricante);
+  var ref = normalizeRef(item.manufacturer_reference);
   if (!ref) return [];
   return catalog.filter(function (c) {
-    var cref = normalizeRef(c.referencia);
+    var cref = normalizeRef(c.reference);
     if (!cref) return false;
-    if (item.fabricante_marca && c.fabricante_marca &&
-        normalizeRef(item.fabricante_marca) !== normalizeRef(c.fabricante_marca)) return false;
+    if (item.brand && c.brand &&
+        normalizeRef(item.brand) !== normalizeRef(c.brand)) return false;
     return cref === ref || cref.indexOf(ref) === 0 || ref.indexOf(cref) === 0;
   });
 }
@@ -31,34 +31,34 @@ function matchByTagPattern(item, catalog) {
   var prefix = tagPrefix(item.tag);
   if (!prefix) return [];
   return catalog.filter(function (c) {
-    if (!c.padrao_tag) return false;
-    return normalizeRef(c.padrao_tag) === normalizeRef(prefix) &&
-      c.tipo_componente === item.tipo_componente;
+    if (!c.tag_pattern) return false;
+    return normalizeRef(c.tag_pattern) === normalizeRef(prefix) &&
+      c.component_type === item.component_type;
   });
 }
 
 function matchByTypeAndApplication(item, catalog) {
-  var text = (item.descricao || '') + ' ' + (item.evidencia || '');
+  var text = (item.description || '') + ' ' + (item.evidence || '');
   return catalog.filter(function (c) {
-    if (c.tipo_componente !== item.tipo_componente) return false;
-    if (item.fabricante_marca && c.fabricante_marca &&
-        normalizeRef(item.fabricante_marca) !== normalizeRef(c.fabricante_marca)) return false;
-    return wordOverlapScore(text, c.aplicacao) >= 2;
+    if (c.component_type !== item.component_type) return false;
+    if (item.brand && c.brand &&
+        normalizeRef(item.brand) !== normalizeRef(c.brand)) return false;
+    return wordOverlapScore(text, c.application) >= 2;
   });
 }
 
-// Returns { status: 'confirmado'|'sugestao'|'sem_correspondencia', candidates: [catalogEntry,...] }
+// Returns { status: 'confirmed'|'suggested'|'no_match', candidates: [catalogEntry,...] }
 function matchComponent(item, catalog) {
   var byRef = matchByReference(item, catalog);
-  if (byRef.length === 1) return { status: 'confirmado', candidates: byRef };
-  if (byRef.length > 1) return { status: 'sugestao', candidates: byRef };
+  if (byRef.length === 1) return { status: 'confirmed', candidates: byRef };
+  if (byRef.length > 1) return { status: 'suggested', candidates: byRef };
 
   var byTag = matchByTagPattern(item, catalog);
-  if (byTag.length === 1) return { status: 'confirmado', candidates: byTag };
-  if (byTag.length > 1) return { status: 'sugestao', candidates: byTag };
+  if (byTag.length === 1) return { status: 'confirmed', candidates: byTag };
+  if (byTag.length > 1) return { status: 'suggested', candidates: byTag };
 
   var byType = matchByTypeAndApplication(item, catalog);
-  if (byType.length >= 1) return { status: 'sugestao', candidates: byType };
+  if (byType.length >= 1) return { status: 'suggested', candidates: byType };
 
-  return { status: 'sem_correspondencia', candidates: [] };
+  return { status: 'no_match', candidates: [] };
 }

@@ -4,10 +4,10 @@ function initCatalog() {
   form.addEventListener('submit', function (evt) {
     evt.preventDefault();
     var entry = readCatalogFormFields('catalog-');
-    if (!entry.tipo_componente) { toast('Escolha o tipo de componente'); return; }
+    if (!entry.component_type) { toast('Choose a component type'); return; }
     createCatalogEntry(entry).then(function () {
       form.reset();
-      toast('Item adicionado ao catálogo');
+      toast('Item added to catalog');
     });
   });
 
@@ -27,13 +27,13 @@ function readCatalogFormFields(prefix) {
     return el ? el.value.trim() : '';
   }
   return {
-    tipo_componente: val('tipo'),
-    fabricante_marca: val('marca'),
-    referencia: val('referencia'),
-    padrao_tag: val('tag'),
-    aplicacao: val('aplicacao'),
-    polos: parseInt(val('polos'), 10) || 0,
-    notas: val('notas')
+    component_type: val('type'),
+    brand: val('brand'),
+    reference: val('reference'),
+    tag_pattern: val('tag-pattern'),
+    application: val('application'),
+    poles: parseInt(val('poles'), 10) || 0,
+    notes: val('notes')
   };
 }
 
@@ -41,8 +41,8 @@ function createCatalogEntry(fields) {
   var now = new Date().toISOString();
   var entry = Object.assign({
     id: uuid(),
-    criado_em: now,
-    atualizado_em: now
+    created_at: now,
+    updated_at: now
   }, fields);
 
   APP.catalog.push(entry);
@@ -56,7 +56,7 @@ function deleteCatalogEntry(id) {
   APP.catalog = APP.catalog.filter(function (c) { return c.id !== id; });
   saveStore('catalog', APP.catalog).then(function () {
     renderCatalog();
-    toast('Item removido do catálogo');
+    toast('Item removed from catalog');
   });
 }
 
@@ -74,13 +74,13 @@ function renderCatalog() {
 
   body.innerHTML = APP.catalog.map(function (c) {
     return '<tr>' +
-      '<td>' + escapeHtml(c.tipo_componente) + '</td>' +
-      '<td>' + escapeHtml(c.fabricante_marca) + '</td>' +
-      '<td>' + escapeHtml(c.referencia) + '</td>' +
-      '<td>' + escapeHtml(c.padrao_tag) + '</td>' +
-      '<td>' + escapeHtml(c.aplicacao) + '</td>' +
-      '<td>' + escapeHtml(c.polos) + '</td>' +
-      '<td class="row-actions"><button class="ghost" data-delete-id="' + c.id + '">Remover</button></td>' +
+      '<td>' + escapeHtml(c.component_type) + '</td>' +
+      '<td>' + escapeHtml(c.brand) + '</td>' +
+      '<td>' + escapeHtml(c.reference) + '</td>' +
+      '<td>' + escapeHtml(c.tag_pattern) + '</td>' +
+      '<td>' + escapeHtml(c.application) + '</td>' +
+      '<td>' + escapeHtml(c.poles) + '</td>' +
+      '<td class="row-actions"><button class="ghost" data-delete-id="' + c.id + '">Remove</button></td>' +
       '</tr>';
   }).join('');
 }
