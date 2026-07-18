@@ -67,7 +67,16 @@ entradas distintas, não uma só "DCR" representando o grupo). NUNCA resuma uma 
 de tags numerados em um único exemplo representativo — isso faz a lista de materiais
 subestimar a quantidade real a comprar. Se a mesma evidência/legenda se aplica a toda a
 sequência, repita a mesma "evidencia" em cada entrada, mas ainda assim gere uma entrada
-por tag.`;
+por tag.
+
+MUITO IMPORTANTE — SEJA CONCISO EM CADA CAMPO DE TEXTO LIVRE: desenhos com muitos
+componentes (dezenas de relés, por exemplo) geram respostas grandes, e respostas muito
+longas podem estourar o tempo de execução do servidor. Mantenha "evidencia" em no
+máximo 1 frase curta (ideal: menos de 15 palavras) — específica o suficiente pra
+conferir contra o desenho, mas sem elaborar. Deixe "observacoes" vazio a menos que
+seja realmente necessário, e "notas_gerais" em no máximo 1-2 frases. Não sacrifique a
+enumeração completa de tags por causa disso — corte o tamanho do texto, não a
+quantidade de itens.`;
 
 const responseSchema = {
   type: "OBJECT",
