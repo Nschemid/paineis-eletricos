@@ -12,6 +12,18 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
+# Same for JS/CSS — this app is under active development, stale cached JS
+# after a deploy is a worse problem than losing the caching benefit.
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]

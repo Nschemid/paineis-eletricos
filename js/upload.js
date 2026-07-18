@@ -94,7 +94,11 @@ function analyzeDrawing(files) {
       if (res.ok) return res.json();
       var status = res.status;
       return res.json().catch(function () { return {}; }).then(function (err) {
-        var e = new Error((f.name || 'arquivo') + ': ' + (err.detail || err.error || ('HTTP ' + status)));
+        var detail = err.detail || err.error || ('HTTP ' + status);
+        if (/RESOURCE_EXHAUSTED|quota/i.test(detail)) {
+          detail = 'cota diária gratuita do Gemini esgotada — tente de novo mais tarde (reseta ~24h)';
+        }
+        var e = new Error((f.name || 'arquivo') + ': ' + detail);
         e.status = status;
         throw e;
       });
