@@ -1,3 +1,5 @@
+import { getStore } from "@netlify/blobs";
+
 const PROMPT = `Você é um especialista em leitura de desenhos elétricos de quadros de comando/força
 industriais. Analise o(s) desenho(s) anexado(s) — pode ser um único arquivo (foto ou PDF com
 múltiplas folhas) ou VÁRIOS ARQUIVOS enviados juntos representando folhas diferentes do MESMO
@@ -155,47 +157,38 @@ async function callGemini(apiKey, files) {
   return JSON.parse(text);
 }
 
-export default async function handler(req) {
-  if (req.method === "OPTIONS") {
-    return new Response("", {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
-    });
+// Netlify Background Function: classic handler(event, context) signature.
+// The platform responds 202 to the caller immediately and lets this run
+// for up to 15 minutes — needed because analyzing several PDF sheets in one
+// Gemini call routinely exceeds the ~10s limit of a normal sync function.
+export async function handler(event) {
+  const jobs = getStore("jobs");
+  let jobId, files;
+
+  try {
+    const body = JSON.parse(event.body || "{}");
+    jobId = body.jobId;
+    files = body.files;
+  } catch {
+    return { statusCode: 400, body: "Invalid JSON" };
   }
 
-  if (req.method !== "POST") {
-    return Response.json({ error: "POST only" }, { status: 405, headers: { "Access-Control-Allow-Origin": "*" } });
+  if (!jobId || !Array.isArray(files) || !files.length) {
+    return { statusCode: 400, body: "Missing jobId or files" };
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return Response.json({ error: "API key not configured" }, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
-  }
-
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
-  }
-
-  const { files } = body;
-  if (!Array.isArray(files) || !files.length || files.some((f) => !f.file || !f.mimeType)) {
-    return Response.json({ error: "Missing files (expects { files: [{ file, mimeType, name? }, ...] })" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+    await jobs.set(jobId, JSON.stringify({ status: "error", error: "API key not configured" }));
+    return { statusCode: 200, body: "" };
   }
 
   try {
-    const parsed = await callGemini(apiKey, files);
-    return Response.json(parsed, { headers: { "Access-Control-Allow-Origin": "*" } });
+    const result = await callGemini(apiKey, files);
+    await jobs.set(jobId, JSON.stringify({ status: "done", result, finished_at: new Date().toISOString() }));
   } catch (err) {
-    return Response.json({ error: "Analysis failed", detail: err.message }, { status: 502, headers: { "Access-Control-Allow-Origin": "*" } });
+    await jobs.set(jobId, JSON.stringify({ status: "error", error: err.message, finished_at: new Date().toISOString() }));
   }
-}
 
-export const config = {
-  method: "POST",
-};
+  return { statusCode: 200, body: "" };
+}

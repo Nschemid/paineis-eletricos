@@ -74,31 +74,58 @@ function handleDrawingFiles(fileList) {
   });
 }
 
+var POLL_INTERVAL_MS = 3000;
+var POLL_MAX_ATTEMPTS = 100; // ~5 minutes ceiling
+
 function analyzeDrawing(files) {
+  var jobId = uuid();
   var payload = {
+    jobId: jobId,
     files: files.map(function (f) {
       return { file: f.base64, mimeType: f.mimeType, name: f.name };
     })
   };
 
-  fetch('/.netlify/functions/analyze-drawing', {
+  fetch('/.netlify/functions/analyze-drawing-background', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-    .then(function (res) {
-      if (!res.ok) return res.json().then(function (err) { throw new Error(err.detail || err.error || 'Falha na análise'); });
-      return res.json();
-    })
-    .then(function (data) {
-      showUploadLoading(false);
-      APP.currentExtraction = data;
-      renderReview();
-      switchTab('review');
+    .then(function () {
+      pollJob(jobId, 0);
     })
     .catch(function (err) {
       showUploadLoading(false);
-      toast('Erro ao analisar desenho: ' + err.message);
+      toast('Erro ao iniciar análise: ' + err.message);
+    });
+}
+
+function pollJob(jobId, attempt) {
+  if (attempt >= POLL_MAX_ATTEMPTS) {
+    showUploadLoading(false);
+    toast('A análise está demorando demais. Tente novamente com menos arquivos.');
+    return;
+  }
+
+  fetch('/.netlify/functions/job-status?jobId=' + encodeURIComponent(jobId))
+    .then(function (res) { return res.json(); })
+    .then(function (job) {
+      if (job.status === 'done') {
+        showUploadLoading(false);
+        APP.currentExtraction = job.result;
+        renderReview();
+        switchTab('review');
+        return;
+      }
+      if (job.status === 'error') {
+        showUploadLoading(false);
+        toast('Erro ao analisar desenho: ' + job.error);
+        return;
+      }
+      setTimeout(function () { pollJob(jobId, attempt + 1); }, POLL_INTERVAL_MS);
+    })
+    .catch(function () {
+      setTimeout(function () { pollJob(jobId, attempt + 1); }, POLL_INTERVAL_MS);
     });
 }
 

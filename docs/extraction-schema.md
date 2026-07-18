@@ -1,19 +1,28 @@
 # Schema de extração
 
-Implementado em `netlify/functions/analyze-drawing.mjs`. O prompt completo e o
-`responseSchema` (dialeto Gemini, tipos em maiúsculo) vivem no código-fonte da function
-— este arquivo documenta a forma dos dados pra quem for consumir o resultado no frontend.
+Implementado em `netlify/functions/analyze-drawing-background.mjs` (função assíncrona —
+ver `docs/app-reference.md` pra explicação do padrão job/polling) + `job-status.mjs`
+(consulta de status). O prompt completo e o `responseSchema` (dialeto Gemini, tipos em
+maiúsculo) vivem no código-fonte da function — este arquivo documenta a forma dos dados
+pra quem for consumir o resultado no frontend.
 
-## Request para a function
+## Fluxo assíncrono (job + polling)
+
+Análise de várias folhas juntas facilmente passa do limite de ~10s de uma Netlify
+Function síncrona, então a extração roda como **Background Function** (até 15 min,
+sem resposta direta) e o cliente consulta o resultado por polling:
 
 ```
-POST /.netlify/functions/analyze-drawing
-{
-  "files": [
-    { "file": "<base64, sem prefixo data:...>", "mimeType": "image/jpeg" | "application/pdf" | ..., "name": "ME331.pdf" },
-    { "file": "...", "mimeType": "application/pdf", "name": "ME333-C1.pdf" }
-  ]
-}
+1. Cliente gera um jobId (uuid) e faz:
+   POST /.netlify/functions/analyze-drawing-background
+   { "jobId": "...", "files": [{ "file": "<base64>", "mimeType": "...", "name": "ME331.pdf" }, ...] }
+   → resposta imediata (202/200 vazio, o corpo não importa)
+
+2. Cliente faz polling a cada ~3s:
+   GET /.netlify/functions/job-status?jobId=...
+   → { "status": "pending" }                              (ainda rodando)
+   → { "status": "done", "result": { ...extração... } }    (pronto)
+   → { "status": "error", "error": "mensagem" }            (falhou)
 ```
 
 Aceita 1 ou mais arquivos numa chamada só, representando folhas diferentes do mesmo
@@ -22,6 +31,10 @@ cruzar informação entre eles (ex: legenda numa folha + símbolo em outra) e n�
 o mesmo componente físico se ele aparecer referenciado em mais de um arquivo. Cada
 arquivo é identificado no prompt pelo `name` enviado — use nomes de arquivo
 significativos no upload, viram literalmente o texto que a IA usa em `folha_origem`.
+
+O resultado dos jobs fica guardado indefinidamente no store `jobs` do Netlify Blobs
+(sem limpeza automática) — não é um problema em uso solo/baixo volume, mas vale saber
+que existe caso o Blobs cresça muito com o tempo.
 
 ## Resposta
 
