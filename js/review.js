@@ -27,6 +27,7 @@ function renderReview() {
 
   buildReviewRows();
   APP.reviewFilters = { tipo: '', tag: '' };
+  APP.expandedGroups = {};
   var tagInput = document.getElementById('filter-tag');
   if (tagInput) tagInput.value = '';
   renderReviewHeader();
@@ -126,51 +127,122 @@ function tagRangeLabel(tags) {
   return tags.slice(0, 3).join(', ') + (tags.length > 3 ? '...' : '');
 }
 
-function buildReviewSummary(rows) {
+function worstConfianca(list) {
+  if (list.indexOf('baixa') !== -1) return 'baixa';
+  if (list.indexOf('media') !== -1) return 'media';
+  return 'alta';
+}
+
+function aggregateValue(entries, getter) {
+  var vals = entries.map(getter);
+  var allSame = vals.every(function (v) { return v === vals[0]; });
+  return allSame ? vals[0] : null;
+}
+
+// Groups filtered {row, index} entries by tag prefix + tipo + generic description
+// (e.g. DCR1..DCR16 -> one group), so repeated tags collapse into an expandable
+// row showing quantity instead of flooding the table with near-identical rows.
+function buildGroups(entries) {
   var groups = {};
   var order = [];
-  rows.forEach(function (row) {
+  entries.forEach(function (entry) {
+    var row = entry.row;
     var prefix = tagPrefix(row.tag) || row.tag;
     var desc = genericDescricao(row.descricao);
     var key = prefix + '|' + row.tipo_componente + '|' + desc;
     if (!groups[key]) {
-      groups[key] = { tipo: row.tipo_componente, descricao: desc, tags: [], polosSet: {} };
+      groups[key] = { key: key, tipo: row.tipo_componente, descricao: desc, entries: [] };
       order.push(key);
     }
-    groups[key].tags.push(row.tag);
-    groups[key].polosSet[row.polos] = true;
+    groups[key].entries.push(entry);
   });
-  return order.map(function (key) {
-    var g = groups[key];
-    var polosValues = Object.keys(g.polosSet);
-    return {
-      label: tagRangeLabel(g.tags),
-      tipo: g.tipo,
-      descricao: g.descricao,
-      qtde: g.tags.length,
-      polos: polosValues.length === 1 ? polosValues[0] : 'variável (confira)'
-    };
-  });
+  return order.map(function (key) { return groups[key]; });
 }
 
-function renderReviewSummary() {
-  var body = document.getElementById('review-summary-body');
-  if (!body) return;
-  var rows = APP.reviewRows.filter(rowMatchesFilter);
-  if (!rows.length) {
-    body.innerHTML = '';
-    return;
+function groupHeaderRowHtml(g, gi, expanded) {
+  var tags = g.entries.map(function (e) { return e.row.tag; });
+  var polos = aggregateValue(g.entries, function (e) { return e.row.polos; });
+  var fonte = aggregateValue(g.entries, function (e) { return e.row.fonte_polos; });
+  var fabricante = aggregateValue(g.entries, function (e) { return e.row.fabricante_marca; });
+  var matchStatus = aggregateValue(g.entries, function (e) { return e.row.matchStatus; });
+  var resolvido = aggregateValue(g.entries, function (e) { return e.row.resolvido_via; });
+  var confianca = worstConfianca(g.entries.map(function (e) { return e.row.confianca; }));
+
+  var sourceLabel = fonte !== null
+    ? ({ bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[fonte] || fonte)
+    : 'vários';
+  var catalogoLabel = matchStatus === null ? '<span class="hint">vários</span>' :
+    matchStatus === 'confirmado' ? '<span class="badge badge-ok">✓ catálogo</span>' :
+    matchStatus === 'sugestao' ? '<span class="badge badge-warn">? sugestão</span>' :
+    '<span class="badge badge-muted">— sem match</span>';
+  var statusLabel = resolvido === null ? 'vários' : (resolvido === 'manual' ? 'editado' : resolvido === 'catalogo' ? 'via catálogo' : 'via IA');
+
+  return '<tr class="group-row ' + confBadgeClass(confianca) + '">' +
+    '<td><button class="group-toggle" data-action="toggle-group" data-group="' + gi + '">' +
+      (expanded ? '▾' : '▸') + ' ' + escapeHtml(tagRangeLabel(tags)) +
+      '</button><span class="group-qty">' + g.entries.length + 'x</span></td>' +
+    '<td>' + escapeHtml(g.descricao) + '</td>' +
+    '<td>' + escapeHtml(g.tipo) + '</td>' +
+    '<td>' + (fabricante !== null ? escapeHtml(fabricante) : '<span class="hint">vários</span>') + '</td>' +
+    '<td>' + (polos !== null ? escapeHtml(polos) : '<span class="hint">variável</span>') + '</td>' +
+    '<td>' + escapeHtml(sourceLabel) + '</td>' +
+    '<td>' + escapeHtml(confianca) + '</td>' +
+    '<td>' + catalogoLabel + '</td>' +
+    '<td class="hint">' + escapeHtml(statusLabel) + '</td>' +
+    '</tr>';
+}
+
+function itemRowHtml(row, i, extraClass) {
+  var sourceLabel = { bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[row.fonte_polos] || row.fonte_polos;
+  var mainRow =
+    '<tr class="' + confBadgeClass(row.confianca) + (extraClass ? ' ' + extraClass : '') + '" data-row="' + i + '">' +
+    '<td>' + escapeHtml(row.tag) + '</td>' +
+    '<td>' + escapeHtml(row.descricao) + '</td>' +
+    '<td>' + escapeHtml(row.tipo_componente) + '</td>' +
+    '<td>' + escapeHtml(row.fabricante_marca) + (row.referencia_fabricante ? '<br><span class="hint">' + escapeHtml(row.referencia_fabricante) + '</span>' : '') + '</td>' +
+    '<td><input type="number" min="0" class="polos-input" data-row="' + i + '" value="' + row.polos + '"></td>' +
+    '<td>' + escapeHtml(sourceLabel) + '<br>' +
+      '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detalhe</button></td>' +
+    '<td>' + escapeHtml(row.confianca) + '</td>' +
+    '<td>' + matchBadgeHtml(row) +
+      (row.matchStatus === 'sem_correspondencia' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ adicionar ao catálogo</button>' : '') +
+      '</td>' +
+    '<td class="row-actions hint">' + (row.resolvido_via === 'manual' ? 'editado' : row.resolvido_via === 'catalogo' ? 'via catálogo' : 'via IA') + '</td>' +
+    '</tr>';
+
+  var evidenciaRow =
+    '<tr class="evidencia-row" data-row-detail="' + i + '" style="display:none">' +
+    '<td colspan="9"><div class="evidencia-detail show">' +
+    '<strong>Evidência:</strong> ' + escapeHtml(row.evidencia) + '<br>' +
+    '<strong>Folha:</strong> ' + escapeHtml(row.folha_origem) +
+    (row.observacoes ? '<br><strong>Obs.:</strong> ' + escapeHtml(row.observacoes) : '') +
+    '</div></td></tr>';
+
+  var suggestRow = '';
+  if (row.matchStatus === 'sugestao') {
+    suggestRow =
+      '<tr class="suggest-row" data-row-suggest="' + i + '" style="display:none"><td colspan="9"><div class="evidencia-detail show">' +
+      row.matchCandidates.map(function (c, ci) {
+        return '<div style="margin-bottom:6px">' + escapeHtml(c.fabricante_marca) + ' ' + escapeHtml(c.referencia || c.padrao_tag) +
+          ' — ' + escapeHtml(c.aplicacao) + ' — <strong>' + escapeHtml(c.polos) + ' polos</strong> ' +
+          '<button data-action="accept-suggest" data-row="' + i + '" data-cand="' + ci + '">aceitar</button></div>';
+      }).join('') +
+      '</div></td></tr>';
   }
-  var summary = buildReviewSummary(rows);
-  body.innerHTML = summary.map(function (g) {
-    return '<tr>' +
-      '<td>' + escapeHtml(g.label) + '</td>' +
-      '<td>' + escapeHtml(g.tipo) + '</td>' +
-      '<td>' + escapeHtml(g.descricao) + '</td>' +
-      '<td><strong>' + g.qtde + '</strong></td>' +
-      '<td>' + escapeHtml(g.polos) + '</td>' +
-      '</tr>';
-  }).join('');
+
+  var addFormRow =
+    '<tr class="add-form-row" data-row-addform="' + i + '" style="display:none"><td colspan="9">' +
+    '<div class="catalog-form">' +
+    '<label>Tipo<select class="inline-tipo"><option value="rele">rele</option><option value="disjuntor">disjuntor</option><option value="contator">contator</option><option value="chave">chave</option><option value="outro">outro</option></select></label>' +
+    '<label>Marca<input type="text" class="inline-marca" value="' + escapeHtml(row.fabricante_marca) + '"></label>' +
+    '<label>Referência<input type="text" class="inline-referencia" value="' + escapeHtml(row.referencia_fabricante) + '"></label>' +
+    '<label>Padrão de tag<input type="text" class="inline-tag" value="' + escapeHtml(tagPrefix(row.tag)) + '"></label>' +
+    '<label>Aplicação<input type="text" class="inline-aplicacao" value="' + escapeHtml(row.descricao) + '"></label>' +
+    '<label>Polos<input type="number" min="0" class="inline-polos"></label>' +
+    '</div><button data-action="save-add-form" data-row="' + i + '" style="margin-top:8px">Salvar no catálogo</button>' +
+    '</td></tr>';
+
+  return mainRow + evidenciaRow + suggestRow + addFormRow;
 }
 
 function populateTipoFilterOptions() {
@@ -203,6 +275,8 @@ function wireReviewFilters() {
   });
 }
 
+var reviewGroupsCache = [];
+
 function renderReviewTable() {
   var body = document.getElementById('review-table-body');
   if (!body) return;
@@ -213,76 +287,40 @@ function renderReviewTable() {
     return;
   }
 
-  var visibleCount = 0;
-
-  body.innerHTML = APP.reviewRows.map(function (row, i) {
-    if (!rowMatchesFilter(row)) return '';
-    visibleCount += 1;
-    var sourceLabel = { bom: 'BOM', simbolo: 'Símbolo', nao_disponivel_no_desenho: 'Não disponível' }[row.fonte_polos] || row.fonte_polos;
-    var mainRow =
-      '<tr class="' + confBadgeClass(row.confianca) + '" data-row="' + i + '">' +
-      '<td>' + escapeHtml(row.tag) + '</td>' +
-      '<td>' + escapeHtml(row.descricao) + '</td>' +
-      '<td>' + escapeHtml(row.tipo_componente) + '</td>' +
-      '<td>' + escapeHtml(row.fabricante_marca) + (row.referencia_fabricante ? '<br><span class="hint">' + escapeHtml(row.referencia_fabricante) + '</span>' : '') + '</td>' +
-      '<td><input type="number" min="0" class="polos-input" data-row="' + i + '" value="' + row.polos + '"></td>' +
-      '<td>' + escapeHtml(sourceLabel) + '<br>' +
-        '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detalhe</button></td>' +
-      '<td>' + escapeHtml(row.confianca) + '</td>' +
-      '<td>' + matchBadgeHtml(row) +
-        (row.matchStatus === 'sem_correspondencia' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ adicionar ao catálogo</button>' : '') +
-        '</td>' +
-      '<td class="row-actions hint">' + (row.resolvido_via === 'manual' ? 'editado' : row.resolvido_via === 'catalogo' ? 'via catálogo' : 'via IA') + '</td>' +
-      '</tr>';
-
-    var evidenciaRow =
-      '<tr class="evidencia-row" data-row-detail="' + i + '" style="display:none">' +
-      '<td colspan="9"><div class="evidencia-detail show">' +
-      '<strong>Evidência:</strong> ' + escapeHtml(row.evidencia) + '<br>' +
-      '<strong>Folha:</strong> ' + escapeHtml(row.folha_origem) +
-      (row.observacoes ? '<br><strong>Obs.:</strong> ' + escapeHtml(row.observacoes) : '') +
-      '</div></td></tr>';
-
-    var suggestRow = '';
-    if (row.matchStatus === 'sugestao') {
-      suggestRow =
-        '<tr class="suggest-row" data-row-suggest="' + i + '" style="display:none"><td colspan="9"><div class="evidencia-detail show">' +
-        row.matchCandidates.map(function (c, ci) {
-          return '<div style="margin-bottom:6px">' + escapeHtml(c.fabricante_marca) + ' ' + escapeHtml(c.referencia || c.padrao_tag) +
-            ' — ' + escapeHtml(c.aplicacao) + ' — <strong>' + escapeHtml(c.polos) + ' polos</strong> ' +
-            '<button data-action="accept-suggest" data-row="' + i + '" data-cand="' + ci + '">aceitar</button></div>';
-        }).join('') +
-        '</div></td></tr>';
-    }
-
-    var addFormRow =
-      '<tr class="add-form-row" data-row-addform="' + i + '" style="display:none"><td colspan="9">' +
-      '<div class="catalog-form">' +
-      '<label>Tipo<select class="inline-tipo"><option value="rele">rele</option><option value="disjuntor">disjuntor</option><option value="contator">contator</option><option value="chave">chave</option><option value="outro">outro</option></select></label>' +
-      '<label>Marca<input type="text" class="inline-marca" value="' + escapeHtml(row.fabricante_marca) + '"></label>' +
-      '<label>Referência<input type="text" class="inline-referencia" value="' + escapeHtml(row.referencia_fabricante) + '"></label>' +
-      '<label>Padrão de tag<input type="text" class="inline-tag" value="' + escapeHtml(tagPrefix(row.tag)) + '"></label>' +
-      '<label>Aplicação<input type="text" class="inline-aplicacao" value="' + escapeHtml(row.descricao) + '"></label>' +
-      '<label>Polos<input type="number" min="0" class="inline-polos"></label>' +
-      '</div><button data-action="save-add-form" data-row="' + i + '" style="margin-top:8px">Salvar no catálogo</button>' +
-      '</td></tr>';
-
-    return mainRow + evidenciaRow + suggestRow + addFormRow;
-  }).join('');
-
-  if (visibleCount === 0) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum item bate com o filtro atual.</td></tr>';
-  }
-
-  // set select values that can't be set via value attribute above
+  var entries = [];
   APP.reviewRows.forEach(function (row, i) {
-    if (!rowMatchesFilter(row)) return;
-    var formRow = body.querySelector('[data-row-addform="' + i + '"]');
-    if (formRow) formRow.querySelector('.inline-tipo').value = row.tipo_componente;
+    if (rowMatchesFilter(row)) entries.push({ row: row, index: i });
   });
 
-  updateFilterCount(visibleCount, APP.reviewRows.length);
-  renderReviewSummary();
+  if (!entries.length) {
+    body.innerHTML = '<tr><td colspan="9" class="empty-state">Nenhum item bate com o filtro atual.</td></tr>';
+    updateFilterCount(0, APP.reviewRows.length);
+    return;
+  }
+
+  var groups = buildGroups(entries);
+  reviewGroupsCache = groups;
+
+  body.innerHTML = groups.map(function (g, gi) {
+    if (g.entries.length === 1) {
+      var only = g.entries[0];
+      return itemRowHtml(only.row, only.index, '');
+    }
+    var expanded = !!APP.expandedGroups[g.key];
+    var html = groupHeaderRowHtml(g, gi, expanded);
+    if (expanded) {
+      html += g.entries.map(function (e) { return itemRowHtml(e.row, e.index, 'group-child'); }).join('');
+    }
+    return html;
+  }).join('');
+
+  // set select values that can't be set via value attribute above
+  entries.forEach(function (entry) {
+    var formRow = body.querySelector('[data-row-addform="' + entry.index + '"]');
+    if (formRow) formRow.querySelector('.inline-tipo').value = entry.row.tipo_componente;
+  });
+
+  updateFilterCount(entries.length, APP.reviewRows.length);
 }
 
 function updateFilterCount(visible, total) {
@@ -311,6 +349,16 @@ function wireReviewEvents() {
     if (!btn) return;
     var action = btn.dataset.action;
     var i = btn.dataset.row !== undefined ? parseInt(btn.dataset.row, 10) : null;
+
+    if (action === 'toggle-group') {
+      var gi = parseInt(btn.dataset.group, 10);
+      var g = reviewGroupsCache[gi];
+      if (g) {
+        APP.expandedGroups[g.key] = !APP.expandedGroups[g.key];
+        renderReviewTable();
+      }
+      return;
+    }
 
     if (action === 'toggle-evidencia') {
       var r = body.querySelector('[data-row-detail="' + i + '"]');

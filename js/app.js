@@ -5,7 +5,8 @@ var APP = {
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
   reviewRows: [],
-  reviewFilters: { tipo: '', tag: '' }
+  reviewFilters: { tipo: '', tag: '' },
+  expandedGroups: {}
 };
 
 function switchTab(name) {
