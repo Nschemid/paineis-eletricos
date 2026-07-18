@@ -10,13 +10,25 @@ function buildReviewRows() {
       resolvedVia = 'catalog';
     }
 
+    var suggestedCable = null;
+    var cableMismatch = false;
+    if (item.rated_current_a && typeof findCableForCurrent === 'function') {
+      suggestedCable = findCableForCurrent(item.rated_current_a);
+      if (suggestedCable && item.drawing_cable_size_mm2) {
+        var statedArea = parseFloat(item.drawing_cable_size_mm2);
+        if (!isNaN(statedArea) && statedArea < suggestedCable.area_mm2) cableMismatch = true;
+      }
+    }
+
     return Object.assign({}, item, {
       poles: poles,
       resolved_via: resolvedVia,
       matchStatus: match.status,
       matchCandidates: match.candidates,
       showEvidence: false,
-      showAddForm: false
+      showAddForm: false,
+      suggested_cable: suggestedCable,
+      cable_mismatch: cableMismatch
     });
   });
 }
@@ -128,6 +140,20 @@ function confBadgeClass(conf) {
   return 'conf-high';
 }
 
+function cableCellHtml(row) {
+  if (!row.rated_current_a) return '<span class="hint">—</span>';
+  var cell = row.rated_current_a + 'A';
+  if (row.suggested_cable) {
+    cell += ' → <strong>' + escapeHtml(row.suggested_cable.code) + '</strong>';
+    if (row.cable_mismatch) {
+      cell += '<br><span class="badge badge-bad">drawing says ' + escapeHtml(row.drawing_cable_size_mm2) + 'mm² — undersized</span>';
+    }
+  } else {
+    cell += '<br><span class="badge badge-muted">no cable rated this high</span>';
+  }
+  return cell;
+}
+
 function matchBadgeHtml(row) {
   if (row.matchStatus === 'confirmed') {
     return '<span class="badge badge-ok">✓ catalog</span>';
@@ -214,6 +240,13 @@ function groupHeaderRowHtml(g, gi, expanded) {
     '<span class="badge badge-muted">— no match</span>';
   var statusLabel = resolved === null ? 'various' : (resolved === 'manual' ? 'edited' : resolved === 'catalog' ? 'via catalog' : 'via AI');
 
+  var ratedCurrent = aggregateValue(g.entries, function (e) { return e.row.rated_current_a; });
+  var suggestedCode = aggregateValue(g.entries, function (e) { return e.row.suggested_cable ? e.row.suggested_cable.code : null; });
+  var anyMismatch = g.entries.some(function (e) { return e.row.cable_mismatch; });
+  var cableLabel = !ratedCurrent ? '<span class="hint">—</span>' :
+    (ratedCurrent + 'A → ' + (suggestedCode !== null ? '<strong>' + escapeHtml(suggestedCode) + '</strong>' : '<span class="hint">varies</span>')) +
+    (anyMismatch ? '<br><span class="badge badge-bad">check cable size</span>' : '');
+
   return '<tr class="group-row ' + confBadgeClass(confidence) + '">' +
     '<td><button class="group-toggle" data-action="toggle-group" data-group="' + gi + '">' +
       (expanded ? '▾' : '▸') + ' ' + escapeHtml(tagRangeLabel(tags)) +
@@ -224,6 +257,7 @@ function groupHeaderRowHtml(g, gi, expanded) {
     '<td>' + (poles !== null ? escapeHtml(poles) : '<span class="hint">varies</span>') + '</td>' +
     '<td>' + escapeHtml(sourceLabel) + '</td>' +
     '<td>' + escapeHtml(confidence) + '</td>' +
+    '<td>' + cableLabel + '</td>' +
     '<td>' + catalogLabel + '</td>' +
     '<td class="hint">' + escapeHtml(statusLabel) + '</td>' +
     '</tr>';
@@ -241,6 +275,7 @@ function itemRowHtml(row, i, extraClass) {
     '<td>' + escapeHtml(sourceLabel) + '<br>' +
       '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detail</button></td>' +
     '<td>' + escapeHtml(row.confidence) + '</td>' +
+    '<td>' + cableCellHtml(row) + '</td>' +
     '<td>' + matchBadgeHtml(row) +
       (row.matchStatus === 'no_match' ? '<br><button class="evidencia-toggle" data-action="toggle-add" data-row="' + i + '">+ add to catalog</button>' : '') +
       '</td>' +
@@ -249,7 +284,7 @@ function itemRowHtml(row, i, extraClass) {
 
   var evidenceRow =
     '<tr class="evidencia-row" data-row-detail="' + i + '" style="display:none">' +
-    '<td colspan="9"><div class="evidencia-detail show">' +
+    '<td colspan="10"><div class="evidencia-detail show">' +
     '<strong>Evidence:</strong> ' + escapeHtml(row.evidence) + '<br>' +
     '<strong>Sheet:</strong> ' + escapeHtml(row.sheet) +
     (row.notes ? '<br><strong>Notes:</strong> ' + escapeHtml(row.notes) : '') +
@@ -258,7 +293,7 @@ function itemRowHtml(row, i, extraClass) {
   var suggestRow = '';
   if (row.matchStatus === 'suggested') {
     suggestRow =
-      '<tr class="suggest-row" data-row-suggest="' + i + '" style="display:none"><td colspan="9"><div class="evidencia-detail show">' +
+      '<tr class="suggest-row" data-row-suggest="' + i + '" style="display:none"><td colspan="10"><div class="evidencia-detail show">' +
       row.matchCandidates.map(function (c, ci) {
         return '<div style="margin-bottom:6px">' + escapeHtml(c.brand) + ' ' + escapeHtml(c.reference || c.tag_pattern) +
           ' — ' + escapeHtml(c.application) + ' — <strong>' + escapeHtml(c.poles) + ' poles</strong> ' +
@@ -268,7 +303,7 @@ function itemRowHtml(row, i, extraClass) {
   }
 
   var addFormRow =
-    '<tr class="add-form-row" data-row-addform="' + i + '" style="display:none"><td colspan="9">' +
+    '<tr class="add-form-row" data-row-addform="' + i + '" style="display:none"><td colspan="10">' +
     '<div class="catalog-form">' +
     '<label>Type<select class="inline-tipo"><option value="relay">relay</option><option value="breaker">breaker</option><option value="contactor">contactor</option><option value="switch">switch</option><option value="other">other</option></select></label>' +
     '<label>Brand<input type="text" class="inline-marca" value="' + escapeHtml(row.brand) + '"></label>' +
@@ -319,7 +354,7 @@ function renderReviewTable() {
   if (!body) return;
 
   if (!APP.reviewRows.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-state">No component identified.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty-state">No component identified.</td></tr>';
     updateFilterCount(0, 0);
     return;
   }
@@ -330,7 +365,7 @@ function renderReviewTable() {
   });
 
   if (!entries.length) {
-    body.innerHTML = '<tr><td colspan="9" class="empty-state">No item matches the current filter.</td></tr>';
+    body.innerHTML = '<tr><td colspan="10" class="empty-state">No item matches the current filter.</td></tr>';
     updateFilterCount(0, APP.reviewRows.length);
     return;
   }
@@ -451,7 +486,12 @@ function confirmReviewList() {
         tag: r.tag, description: r.description, component_type: r.component_type,
         brand: r.brand, manufacturer_reference: r.manufacturer_reference,
         poles: r.poles, pole_source: r.pole_source, evidence: r.evidence,
-        confidence: r.confidence, sheet: r.sheet, resolved_via: r.resolved_via
+        confidence: r.confidence, sheet: r.sheet, resolved_via: r.resolved_via,
+        rated_current_a: r.rated_current_a || 0,
+        rated_current_source: r.rated_current_source || 'not_available',
+        drawing_cable_size_mm2: r.drawing_cable_size_mm2 || '',
+        suggested_cable_code: r.suggested_cable ? r.suggested_cable.code : '',
+        cable_mismatch: !!r.cable_mismatch
       };
     }),
     confirmed_at: new Date().toISOString()

@@ -19,6 +19,7 @@
   <button data-tab="review">Review</button>
   <button data-tab="catalog">Catalog</button>
   <button data-tab="cables">Cables</button>
+  <button data-tab="wiring">Wiring</button>
 </nav>
 
 <main class="app-content">
@@ -62,11 +63,11 @@
             <thead>
               <tr>
                 <th>Tag</th><th>Description</th><th>Type</th><th>Brand/Ref</th>
-                <th>Poles</th><th>Source</th><th>Confidence</th><th>Catalog</th><th>Status</th>
+                <th>Poles</th><th>Source</th><th>Confidence</th><th>Cable</th><th>Catalog</th><th>Status</th>
               </tr>
             </thead>
             <tbody id="review-table-body">
-              <tr><td colspan="9" class="empty-state">Upload a drawing in the Upload tab.</td></tr>
+              <tr><td colspan="10" class="empty-state">Upload a drawing in the Upload tab.</td></tr>
             </tbody>
           </table>
         </div>
@@ -141,6 +142,47 @@
     </div>
   </section>
 
+  <section id="screen-wiring" class="screen">
+    <div class="card">
+      <h2>Wire labeling checklist</h2>
+      <p class="hint">General reference, not project-specific data — based on common NEC 409 / UL 508A panel-labeling practice. Confirm against your own project spec or AHJ requirements before relying on it.</p>
+      <ul style="margin:0;padding-left:20px;line-height:1.7">
+        <li>Every conductor gets a wire number/tag matching the schematic at <strong>both ends</strong> — not just one.</li>
+        <li>Wire tags stay legible and won't fall off after vibration, heat, or cleaning (heat-shrink or engraved, not handwritten tape, for anything permanent).</li>
+        <li>Component tags on the panel (relays, breakers, terminals) match the drawing's tag exactly, including case and punctuation.</li>
+        <li>Field-wiring terminals get a terminal block number matching the drawing, especially on multi-cable terminal strips.</li>
+        <li>Ground/bonding conductors are visually distinguishable (green/yellow) and labeled as such even when the rest of the panel uses a different color code.</li>
+        <li>The panel door/cover gets a nameplate with voltage, SCCR, and manufacturer info per UL 508A before it ships.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Terminal torque specs</h2>
+      <p class="hint">Torque is specific to each terminal block brand/series — starts empty on purpose, same as the Catalog tab. Add entries here from your own terminal block datasheets as you use them, so this stays accurate instead of guessing at a generic number.</p>
+      <form id="terminal-form">
+        <div class="catalog-form">
+          <label>Brand <input type="text" id="terminal-brand" placeholder="e.g. WAGO"></label>
+          <label>Series <input type="text" id="terminal-series" placeholder="e.g. 2002 series"></label>
+          <label>Wire range <input type="text" id="terminal-wire-range" placeholder="e.g. 0.5-2.5mm²"></label>
+          <label>Torque min (Nm) <input type="number" step="0.1" min="0" id="terminal-torque-min"></label>
+          <label>Torque max (Nm) <input type="number" step="0.1" min="0" id="terminal-torque-max"></label>
+          <label>Source <input type="text" id="terminal-source" placeholder="e.g. datasheet ref/date"></label>
+        </div>
+        <button type="submit" style="margin-top:12px">Add torque spec</button>
+      </form>
+    </div>
+    <div class="card">
+      <div style="overflow-x:auto">
+        <table class="comp-table">
+          <thead>
+            <tr><th>Brand</th><th>Series</th><th>Wire range</th><th>Torque</th><th>Source</th><th></th></tr>
+          </thead>
+          <tbody id="terminals-table-body"></tbody>
+        </table>
+      </div>
+      <p id="terminals-empty" class="empty-state" style="display:none">No torque specs added yet. Add the first one from a terminal block datasheet above.</p>
+    </div>
+  </section>
+
 </main>
 
 <div id="toast" class="toast"></div>
@@ -148,6 +190,7 @@
 <script src="js/match.js"></script>
 <script src="js/catalog.js"></script>
 <script src="js/cables.js"></script>
+<script src="js/terminals.js"></script>
 <script src="js/upload.js"></script>
 <script src="js/review.js"></script>
 <script src="js/app.js"></script>

@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 
-const ALLOWED_STORES = ["drawings", "catalog", "cables"];
+const ALLOWED_STORES = ["drawings", "catalog", "cables", "terminals"];
 const BLOB_KEY = "data";
 
 export default async (req) => {
@@ -8,7 +8,7 @@ export default async (req) => {
   const store = url.searchParams.get("store");
 
   if (!store || !ALLOWED_STORES.includes(store)) {
-    return new Response(JSON.stringify({ error: "Invalid store. Use ?store=drawings, ?store=catalog or ?store=cables" }), {
+    return new Response(JSON.stringify({ error: "Invalid store. Use ?store=drawings, ?store=catalog, ?store=cables or ?store=terminals" }), {
       status: 400,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });

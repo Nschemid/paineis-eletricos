@@ -10,6 +10,15 @@ function initCables() {
   });
 }
 
+// Shared by the sizer UI and the Review tab's drawing-to-cable connection.
+// Returns the smallest cable in APP.cables rated >= requiredA, or null.
+function findCableForCurrent(requiredA) {
+  var candidates = (APP.cables || [])
+    .filter(function (c) { return c.continuous_current_a >= requiredA; })
+    .sort(function (a, b) { return a.continuous_current_a - b.continuous_current_a; });
+  return candidates.length ? candidates[0] : null;
+}
+
 function runCableSizer() {
   var input = document.getElementById('cable-sizer-input');
   var resultEl = document.getElementById('cable-sizer-result');
@@ -20,16 +29,13 @@ function runCableSizer() {
     return;
   }
 
-  var candidates = APP.cables
-    .filter(function (c) { return c.continuous_current_a >= required; })
-    .sort(function (a, b) { return a.continuous_current_a - b.continuous_current_a; });
+  var best = findCableForCurrent(required);
 
-  if (!candidates.length) {
+  if (!best) {
     resultEl.innerHTML = '<p class="hint">No cable in this table rates high enough for ' + escapeHtml(required) + 'A — check a larger series or a different cable table.</p>';
     return;
   }
 
-  var best = candidates[0];
   resultEl.innerHTML =
     '<div class="card" style="margin-top:10px;margin-bottom:0">' +
     '<strong>' + escapeHtml(best.code) + '</strong> — ' + escapeHtml(best.area_mm2) + ' mm², rated ' + escapeHtml(best.continuous_current_a) + 'A continuous' +

@@ -75,7 +75,20 @@ exceed the server's execution time. Keep "evidence" to at most 1 short sentence
 (ideally under 15 words) — specific enough to check against the drawing, but not
 elaborated. Leave "notes" empty unless truly necessary, and "general_notes" to at
 most 1-2 sentences. Don't sacrifice full tag enumeration because of this — cut text
-length, not item count.`;
+length, not item count.
+
+ALSO EXTRACT, WHEN PRESENT — CURRENT RATING AND CABLE SIZE: for breakers/switches, the
+label on the drawing or legend very often states an amperage trip rating (e.g. "iC60N
+20A", "MCB 32A", "63A"). When this number is explicitly printed on the drawing, fill
+"rated_current_a" with it and set "rated_current_source" to "label". If no amperage is
+printed anywhere for that component, set "rated_current_a" to 0 and
+"rated_current_source" to "not_available" — do not estimate or infer a rating from the
+component's apparent size or position. Separately, if the drawing explicitly annotates a
+conductor/cable size for that circuit (e.g. "2.5mm²", "4 sqmm", "#10 AWG"), copy that
+text verbatim into "drawing_cable_size_mm2" (as a plain number in mm² if the drawing
+already uses mm², otherwise leave the original unit text) — leave it empty if the
+drawing doesn't state one. These two fields let a downstream tool cross-check the
+drawing's own cable size against the breaker rating — don't guess either one.`;
 
 const responseSchema = {
   type: "OBJECT",
@@ -105,6 +118,9 @@ const responseSchema = {
           confidence: { type: "STRING", enum: ["high", "medium", "low"] },
           sheet: { type: "STRING" },
           notes: { type: "STRING" },
+          rated_current_a: { type: "INTEGER" },
+          rated_current_source: { type: "STRING", enum: ["label", "not_available"] },
+          drawing_cable_size_mm2: { type: "STRING" },
         },
         required: ["tag", "description", "component_type", "pole_source", "poles", "evidence", "confidence", "sheet"],
       },

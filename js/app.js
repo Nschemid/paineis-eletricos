@@ -2,6 +2,7 @@ var APP = {
   catalog: [],
   drawings: [],
   cables: [],
+  terminals: [],
   currentExtraction: null,
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
@@ -81,9 +82,15 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof renderCables === 'function') renderCables();
   });
 
+  fetchStore('terminals').then(function (data) {
+    APP.terminals = data;
+    if (typeof renderTerminals === 'function') renderTerminals();
+  });
+
   if (typeof initUpload === 'function') initUpload();
   if (typeof initCatalog === 'function') initCatalog();
   if (typeof initCables === 'function') initCables();
+  if (typeof initTerminals === 'function') initTerminals();
 
   var confirmBtn = document.getElementById('confirm-list-btn');
   if (confirmBtn) confirmBtn.addEventListener('click', confirmReviewList);
