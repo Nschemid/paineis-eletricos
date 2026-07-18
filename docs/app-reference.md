@@ -10,7 +10,7 @@
 ## `js/upload.js`
 - `resizeImage(file, maxSize, quality, callback)` — downscale de fotos via canvas (mesmo padrão do `gluton`)
 - `readFileAsBase64(file, callback)` — usado para PDF, sem downscale
-- `handleDrawingFile(file)` → `analyzeDrawing(base64, mimeType)` — POST pra `analyze-drawing`, resultado vai pra `APP.currentExtraction` e troca pra aba Revisão
+- `handleDrawingFiles(fileList)` — aceita múltiplos arquivos (input `multiple`), prepara todos em paralelo, monta `APP.currentFiles` e chama `analyzeDrawing(files)` → POST `{files:[...]}` pra `analyze-drawing` numa chamada só, resultado vai pra `APP.currentExtraction` e troca pra aba Revisão
 
 ## `js/review.js`
 - `buildReviewRows()` — monta `APP.reviewRows` a partir da extração, já rodando o matching de catálogo por linha

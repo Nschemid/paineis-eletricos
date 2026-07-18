@@ -34,22 +34,19 @@ function initUpload() {
   var input = document.getElementById('drawing-file-input');
   if (!input) return;
   input.addEventListener('change', function (evt) {
-    var file = evt.target.files[0];
-    if (!file) return;
-    handleDrawingFile(file);
+    var fileList = Array.prototype.slice.call(evt.target.files);
+    if (!fileList.length) return;
+    handleDrawingFiles(fileList);
     evt.target.value = '';
   });
 }
 
-function handleDrawingFile(file) {
+function prepareFile(file, callback) {
   var isPdf = file.type === 'application/pdf';
   var previewUrl = URL.createObjectURL(file);
 
-  showUploadLoading(true);
-
   function proceed(base64, mimeType) {
-    APP.currentFile = { base64: base64, mimeType: mimeType, previewUrl: previewUrl, isPdf: isPdf, name: file.name };
-    analyzeDrawing(base64, mimeType);
+    callback({ base64: base64, mimeType: mimeType, previewUrl: previewUrl, isPdf: isPdf, name: file.name });
   }
 
   if (isPdf) {
@@ -59,11 +56,35 @@ function handleDrawingFile(file) {
   }
 }
 
-function analyzeDrawing(base64, mimeType) {
+function handleDrawingFiles(fileList) {
+  showUploadLoading(true);
+
+  var prepared = new Array(fileList.length);
+  var remaining = fileList.length;
+
+  fileList.forEach(function (file, i) {
+    prepareFile(file, function (result) {
+      prepared[i] = result;
+      remaining -= 1;
+      if (remaining === 0) {
+        APP.currentFiles = prepared;
+        analyzeDrawing(prepared);
+      }
+    });
+  });
+}
+
+function analyzeDrawing(files) {
+  var payload = {
+    files: files.map(function (f) {
+      return { file: f.base64, mimeType: f.mimeType, name: f.name };
+    })
+  };
+
   fetch('/.netlify/functions/analyze-drawing', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ file: base64, mimeType: mimeType })
+    body: JSON.stringify(payload)
   })
     .then(function (res) {
       if (!res.ok) return res.json().then(function (err) { throw new Error(err.detail || err.error || 'Falha na análise'); });

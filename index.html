@@ -25,11 +25,11 @@
   <section id="screen-upload" class="screen active">
     <div class="card">
       <h2>Enviar desenho</h2>
-      <p class="hint">Foto ou PDF do desenho elétrico. A extração roda automaticamente e te leva pra tela de Revisão.</p>
+      <p class="hint">Foto(s) ou PDF(s) do desenho elétrico. Pode selecionar várias folhas do mesmo projeto de uma vez — a extração cruza informação entre elas. A extração roda automaticamente e te leva pra tela de Revisão.</p>
       <div class="upload-drop">
         <label class="btn" style="display:inline-block">
-          Escolher arquivo
-          <input type="file" id="drawing-file-input" accept="image/*,application/pdf" capture="environment" style="display:none">
+          Escolher arquivo(s)
+          <input type="file" id="drawing-file-input" accept="image/*,application/pdf" capture="environment" multiple style="display:none">
         </label>
       </div>
       <p id="upload-loading" style="display:none" class="hint">Analisando desenho, pode levar alguns segundos...</p>

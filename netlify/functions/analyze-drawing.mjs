@@ -1,7 +1,17 @@
 const PROMPT = `Você é um especialista em leitura de desenhos elétricos de quadros de comando/força
-industriais. Analise o(s) desenho(s) anexado(s) (pode ser uma foto ou um PDF com múltiplas
-folhas) e extraia a lista de componentes (relés, disjuntores, contatores, chaves), com foco
-especial em determinar corretamente o NÚMERO DE POLOS de cada um.
+industriais. Analise o(s) desenho(s) anexado(s) — pode ser um único arquivo (foto ou PDF com
+múltiplas folhas) ou VÁRIOS ARQUIVOS enviados juntos representando folhas diferentes do MESMO
+conjunto de desenhos de um projeto (ex: um arquivo com o diagrama de força/unifilar, outro com
+o diagrama de fiação de controle, outro com a legenda de relés). Cada arquivo é precedido por
+um marcador de texto "--- Arquivo N: <nome> ---" indicando seu nome original — use esse nome
+(ou parte dele) para preencher "folha_origem", e trate os arquivos como um conjunto único e
+coerente: uma legenda de relé num arquivo pode ter seu símbolo/contagem de polos determinável
+no diagrama unifilar de outro arquivo, e vice-versa — cruze essa informação entre os arquivos
+sempre que possível antes de decidir "fonte_polos". Extraia a lista de componentes (relés,
+disjuntores, contatores, chaves), com foco especial em determinar corretamente o NÚMERO DE
+POLOS de cada um, evitando duplicar o mesmo componente físico se ele aparecer referenciado em
+mais de um arquivo (ex: mesmo tag citado na legenda de um arquivo e no unifilar de outro —
+isso é UM componente só, não dois).
 
 O número de polos pode vir de TRÊS fontes distintas — classifique cada componente
 corretamente em "fonte_polos":
@@ -101,11 +111,17 @@ const responseSchema = {
   required: ["desenho", "componentes"],
 };
 
-async function callGemini(apiKey, file, mimeType) {
+async function callGemini(apiKey, files) {
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`;
 
+  const parts = [{ text: PROMPT }];
+  files.forEach((f, i) => {
+    parts.push({ text: `\n--- Arquivo ${i + 1}: ${f.name || "sem nome"} ---` });
+    parts.push({ inlineData: { mimeType: f.mimeType, data: f.file } });
+  });
+
   const geminiBody = {
-    contents: [{ parts: [{ text: PROMPT }, { inlineData: { mimeType, data: file } }] }],
+    contents: [{ parts }],
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema,
@@ -167,13 +183,13 @@ export default async function handler(req) {
     return Response.json({ error: "Invalid JSON" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
-  const { file, mimeType } = body;
-  if (!file || !mimeType) {
-    return Response.json({ error: "Missing file or mimeType" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+  const { files } = body;
+  if (!Array.isArray(files) || !files.length || files.some((f) => !f.file || !f.mimeType)) {
+    return Response.json({ error: "Missing files (expects { files: [{ file, mimeType, name? }, ...] })" }, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
   }
 
   try {
-    const parsed = await callGemini(apiKey, file, mimeType);
+    const parsed = await callGemini(apiKey, files);
     return Response.json(parsed, { headers: { "Access-Control-Allow-Origin": "*" } });
   } catch (err) {
     return Response.json({ error: "Analysis failed", detail: err.message }, { status: 502, headers: { "Access-Control-Allow-Origin": "*" } });

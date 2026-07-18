@@ -42,18 +42,41 @@ function renderReviewHeader() {
 function renderReviewPreview() {
   var wrap = document.getElementById('review-preview');
   if (!wrap) return;
-  var f = APP.currentFile;
-  if (!f) { wrap.innerHTML = ''; return; }
+  var files = APP.currentFiles || [];
+  if (!files.length) { wrap.innerHTML = ''; return; }
 
+  if (APP.activePreviewIndex >= files.length) APP.activePreviewIndex = 0;
+  var f = files[APP.activePreviewIndex];
+
+  var tabs = '';
+  if (files.length > 1) {
+    tabs = '<div class="preview-tabs" style="width:100%;display:flex;flex-wrap:wrap;gap:4px;padding:8px 8px 0">' +
+      files.map(function (file, i) {
+        var active = i === APP.activePreviewIndex ? ' style="background:var(--accent);color:var(--accent-contrast)"' : ' class="secondary"';
+        return '<button data-preview-index="' + i + '"' + active + ' style="padding:4px 10px;min-height:32px;font-size:0.75rem">' + escapeHtml(file.name) + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  var content;
   if (f.isPdf) {
-    wrap.innerHTML =
+    content =
       '<div style="width:100%">' +
       '<embed src="' + f.previewUrl + '" type="application/pdf">' +
       '<p class="hint" style="padding:8px"><a href="' + f.previewUrl + '" target="_blank" rel="noopener">Abrir PDF em nova aba</a> se o preview não aparecer aqui.</p>' +
       '</div>';
   } else {
-    wrap.innerHTML = '<img src="' + f.previewUrl + '" alt="Desenho">';
+    content = '<img src="' + f.previewUrl + '" alt="Desenho">';
   }
+
+  wrap.innerHTML = tabs + content;
+
+  wrap.querySelectorAll('[data-preview-index]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      APP.activePreviewIndex = parseInt(btn.dataset.previewIndex, 10);
+      renderReviewPreview();
+    });
+  });
 }
 
 function confBadgeClass(conf) {

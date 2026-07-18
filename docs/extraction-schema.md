@@ -8,8 +8,20 @@ Implementado em `netlify/functions/analyze-drawing.mjs`. O prompt completo e o
 
 ```
 POST /.netlify/functions/analyze-drawing
-{ "file": "<base64, sem prefixo data:...>", "mimeType": "image/jpeg" | "application/pdf" | ... }
+{
+  "files": [
+    { "file": "<base64, sem prefixo data:...>", "mimeType": "image/jpeg" | "application/pdf" | ..., "name": "ME331.pdf" },
+    { "file": "...", "mimeType": "application/pdf", "name": "ME333-C1.pdf" }
+  ]
+}
 ```
+
+Aceita 1 ou mais arquivos numa chamada só, representando folhas diferentes do mesmo
+conjunto de desenhos. O prompt instrui o modelo a tratá-los como um conjunto único,
+cruzar informação entre eles (ex: legenda numa folha + símbolo em outra) e não duplicar
+o mesmo componente físico se ele aparecer referenciado em mais de um arquivo. Cada
+arquivo é identificado no prompt pelo `name` enviado — use nomes de arquivo
+significativos no upload, viram literalmente o texto que a IA usa em `folha_origem`.
 
 ## Resposta
 

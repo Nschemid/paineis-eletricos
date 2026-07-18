@@ -2,7 +2,8 @@ var APP = {
   catalog: [],
   drawings: [],
   currentExtraction: null,
-  currentFile: null, // { base64, mimeType, previewUrl, name }
+  currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
+  activePreviewIndex: 0,
   reviewRows: []
 };
 
