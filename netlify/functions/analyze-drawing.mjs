@@ -22,6 +22,12 @@ corretamente em "fonte_polos":
    "evidencia" exatamente quais barras/fases o símbolo toca — não escreva apenas "3 polos",
    escreva algo como "toca barras A/B/C, não toca N" ou "único símbolo de contato entre as
    barras, sem carga rotulada embaixo".
+   ATENÇÃO 2: um disjuntor de reserva (spare) sem carga é um COMPONENTE PRÓPRIO, com seu
+   próprio símbolo e seu próprio polos — mesmo sem rótulo de carga associado. Um texto
+   curto perto dele (ex: "N2", "N3") é o TAG desse disjuntor, não uma indicação de que
+   ele está ligado ao condutor neutro — não confunda a etiqueta/tag de um componente com
+   o nome de uma barra ou condutor. Se não tiver certeza se um texto é tag de componente
+   ou rótulo de barra, diga isso explicitamente em "evidencia" em vez de assumir.
 
 3. "nao_disponivel_no_desenho" — o desenho dá apenas marca/tag/função (ex: "DCR1 DAMPER
    CONTROL RELAY" ou "SIEMENS 3RT20...") SEM número de polos determinável nem por texto
@@ -45,7 +51,18 @@ naquele ponto do desenho.
 
 Retorne a lista de TODOS os componentes de comando/proteção identificáveis (relés,
 disjuntores, contatores, chaves seccionadoras) — não pule itens só porque o polos não
-é determinável, isso é informação útil por si só.`;
+é determinável, isso é informação útil por si só.
+
+MUITO IMPORTANTE — ENUMERAÇÃO COMPLETA, NÃO RESUMO POR TIPO: isto é uma lista de
+materiais para COMPRA, então a QUANTIDADE de cada item importa tanto quanto o tipo. Se o
+desenho tem uma legenda ou tabela com vários relés do mesmo tipo em sequência (ex:
+"DCR1" até "DCR16", ou "RST1" até "RST11", ou "FR1" até "FR11"), você DEVE retornar UM
+COMPONENTE SEPARADO PARA CADA TAG INDIVIDUAL (DCR1, DCR2, DCR3, ..., DCR16 — dezesseis
+entradas distintas, não uma só "DCR" representando o grupo). NUNCA resuma uma sequência
+de tags numerados em um único exemplo representativo — isso faz a lista de materiais
+subestimar a quantidade real a comprar. Se a mesma evidência/legenda se aplica a toda a
+sequência, repita a mesma "evidencia" em cada entrada, mas ainda assim gere uma entrada
+por tag.`;
 
 const responseSchema = {
   type: "OBJECT",
