@@ -62,7 +62,7 @@ function renderCables() {
     return '<tr>' +
       '<td>' + escapeHtml(c.code) + '</td>' +
       '<td>' + escapeHtml(c.area_mm2) + '</td>' +
-      '<td>' + escapeHtml(c.strands) + '/' + escapeHtml(c.wire_diameter_mm) + '</td>' +
+      '<td>' + (c.strands ? escapeHtml(c.strands) + '/' + escapeHtml(c.wire_diameter_mm) : '<span class="hint">—</span>') + '</td>' +
       '<td>' + escapeHtml(c.dc_resistance_mohm_per_m) + '</td>' +
       '<td>' + escapeHtml(c.continuous_current_a) + '</td>' +
       '<td>' + escapeHtml(c.short_circuit_1s_a) + '</td>' +
