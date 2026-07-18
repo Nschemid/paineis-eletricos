@@ -6,19 +6,32 @@ ver `docs/app-reference.md` pra explicação do padrão job/polling) + `job-stat
 maiúsculo) vivem no código-fonte da function — este arquivo documenta a forma dos dados
 pra quem for consumir o resultado no frontend.
 
-## Fluxo assíncrono (job + polling)
+## Fluxo assíncrono (upload em Blobs + job + polling)
 
 Análise de várias folhas juntas facilmente passa do limite de ~10s de uma Netlify
 Function síncrona, então a extração roda como **Background Function** (até 15 min,
-sem resposta direta) e o cliente consulta o resultado por polling:
+sem resposta direta). Mas invocações de Background Function também têm um limite de
+**256KB de payload** (limite de invocação assíncrona do Lambda) — um único PDF de
+desenho já pode passar disso. Por isso os arquivos NÃO vão direto na invocação da
+function de análise: primeiro ficam armazenados em Blobs, e a function de análise só
+recebe a referência (`jobId` + quantidade de arquivos), lendo o conteúdo real por
+dentro (sem limite de payload nesse caso, só o de execução):
 
 ```
-1. Cliente gera um jobId (uuid) e faz:
-   POST /.netlify/functions/analyze-drawing-background
-   { "jobId": "...", "files": [{ "file": "<base64>", "mimeType": "...", "name": "ME331.pdf" }, ...] }
-   → resposta imediata (202/200 vazio, o corpo não importa)
+1. Cliente gera um jobId (uuid). Para CADA arquivo, faz (sequencial ou paralelo):
+   POST /.netlify/functions/upload-file
+   { "jobId": "...", "index": 0, "file": "<base64>", "mimeType": "...", "name": "ME331.pdf" }
+   → function síncrona rápida, só grava no store "uploads" (sem o limite de 256KB
+     das Background Functions — isso aqui é uma invocação síncrona normal)
 
-2. Cliente faz polling a cada ~3s:
+2. Depois de todos os arquivos enviados, dispara a análise:
+   POST /.netlify/functions/analyze-drawing-background
+   { "jobId": "...", "fileCount": 4 }
+   → resposta imediata (202/200 vazio, o corpo não importa); a function lê os
+     arquivos de volta do store "uploads" por dentro, chama o Gemini, grava o
+     resultado no store "jobs" e apaga as entradas de "uploads" ao terminar
+
+3. Cliente faz polling a cada ~3s:
    GET /.netlify/functions/job-status?jobId=...
    → { "status": "pending" }                              (ainda rodando)
    → { "status": "done", "result": { ...extração... } }    (pronto)

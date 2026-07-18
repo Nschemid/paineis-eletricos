@@ -11,7 +11,7 @@
 - `resizeImage(file, maxSize, quality, callback)` — downscale de fotos via canvas (mesmo padrão do `gluton`)
 - `readFileAsBase64(file, callback)` — usado para PDF, sem downscale
 - `handleDrawingFiles(fileList)` — aceita múltiplos arquivos (input `multiple`), prepara todos em paralelo, monta `APP.currentFiles` e chama `analyzeDrawing(files)`
-- `analyzeDrawing(files)` — gera um `jobId`, dispara `POST analyze-drawing-background` (Background Function, não espera resposta síncrona) e inicia `pollJob(jobId, 0)`
+- `analyzeDrawing(files)` — gera um `jobId`, faz `POST upload-file` pra cada arquivo (grava em Blobs, evita o limite de 256KB de payload das Background Functions), depois `POST analyze-drawing-background` (só `{jobId, fileCount}`) e inicia `pollJob(jobId, 0)`
 - `pollJob(jobId, attempt)` — consulta `GET job-status?jobId=...` a cada 3s (até 100 tentativas, ~5min) até `status` virar `done` (preenche `APP.currentExtraction`, chama `renderReview()`, troca pra aba Revisão) ou `error` (toast)
 
 ## `js/review.js`

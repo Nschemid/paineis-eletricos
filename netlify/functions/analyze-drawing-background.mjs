@@ -161,20 +161,28 @@ async function callGemini(apiKey, files) {
 // The platform responds 202 to the caller immediately and lets this run
 // for up to 15 minutes — needed because analyzing several PDF sheets in one
 // Gemini call routinely exceeds the ~10s limit of a normal sync function.
+//
+// The invocation payload itself is capped at 256KB (Lambda async invoke limit),
+// which a single drawing photo/PDF can already exceed and multiple definitely
+// do — so this function does NOT receive file bytes directly. The client
+// stages each file in the "uploads" Blobs store via upload-file.mjs first and
+// only sends { jobId, fileCount } here; this function reads the bytes back by
+// key, well within its own 15-minute execution budget.
 export async function handler(event) {
   const jobs = getStore("jobs");
-  let jobId, files;
+  const uploads = getStore("uploads");
+  let jobId, fileCount;
 
   try {
     const body = JSON.parse(event.body || "{}");
     jobId = body.jobId;
-    files = body.files;
+    fileCount = body.fileCount;
   } catch {
     return { statusCode: 400, body: "Invalid JSON" };
   }
 
-  if (!jobId || !Array.isArray(files) || !files.length) {
-    return { statusCode: 400, body: "Missing jobId or files" };
+  if (!jobId || !fileCount) {
+    return { statusCode: 400, body: "Missing jobId or fileCount" };
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -184,8 +192,19 @@ export async function handler(event) {
   }
 
   try {
+    const files = [];
+    for (let i = 0; i < fileCount; i++) {
+      const raw = await uploads.get(`${jobId}:${i}`);
+      if (!raw) throw new Error(`Arquivo ${i} não encontrado no armazenamento temporário`);
+      files.push(JSON.parse(raw));
+    }
+
     const result = await callGemini(apiKey, files);
     await jobs.set(jobId, JSON.stringify({ status: "done", result, finished_at: new Date().toISOString() }));
+
+    for (let i = 0; i < fileCount; i++) {
+      await uploads.delete(`${jobId}:${i}`);
+    }
   } catch (err) {
     await jobs.set(jobId, JSON.stringify({ status: "error", error: err.message, finished_at: new Date().toISOString() }));
   }

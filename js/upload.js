@@ -77,20 +77,31 @@ function handleDrawingFiles(fileList) {
 var POLL_INTERVAL_MS = 3000;
 var POLL_MAX_ATTEMPTS = 100; // ~5 minutes ceiling
 
+// Background Function invocations are capped at 256KB of payload (Lambda async
+// invoke limit) — a single drawing file can already exceed that, so each file
+// is staged in Blobs via upload-file (a fast sync function, no size problem
+// there) and analyze-drawing-background only receives { jobId, fileCount }.
 function analyzeDrawing(files) {
   var jobId = uuid();
-  var payload = {
-    jobId: jobId,
-    files: files.map(function (f) {
-      return { file: f.base64, mimeType: f.mimeType, name: f.name };
-    })
-  };
 
-  fetch('/.netlify/functions/analyze-drawing-background', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
+  var stageUploads = files.map(function (f, i) {
+    return fetch('/.netlify/functions/upload-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId: jobId, index: i, file: f.base64, mimeType: f.mimeType, name: f.name })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('Falha ao enviar ' + f.name);
+    });
+  });
+
+  Promise.all(stageUploads)
+    .then(function () {
+      return fetch('/.netlify/functions/analyze-drawing-background', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: jobId, fileCount: files.length })
+      });
+    })
     .then(function () {
       pollJob(jobId, 0);
     })
