@@ -1,6 +1,7 @@
 var APP = {
   catalog: [],
   drawings: [],
+  cables: [],
   currentExtraction: null,
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
@@ -75,8 +76,14 @@ document.addEventListener('DOMContentLoaded', function () {
     APP.drawings = data;
   });
 
+  fetchStore('cables').then(function (data) {
+    APP.cables = data;
+    if (typeof renderCables === 'function') renderCables();
+  });
+
   if (typeof initUpload === 'function') initUpload();
   if (typeof initCatalog === 'function') initCatalog();
+  if (typeof initCables === 'function') initCables();
 
   var confirmBtn = document.getElementById('confirm-list-btn');
   if (confirmBtn) confirmBtn.addEventListener('click', confirmReviewList);

@@ -18,6 +18,7 @@
   <button data-tab="upload" class="active">Upload</button>
   <button data-tab="review">Review</button>
   <button data-tab="catalog">Catalog</button>
+  <button data-tab="cables">Cables</button>
 </nav>
 
 <main class="app-content">
@@ -112,12 +113,41 @@
     </div>
   </section>
 
+  <section id="screen-cables" class="screen">
+    <div class="card">
+      <h2>Cable sizer</h2>
+      <p class="hint">Enter the required continuous current and get the smallest cable from the table below that's rated for it (Touching installation, no derating — see the disclaimer in the result).</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="number" id="cable-sizer-input" min="0" placeholder="Required current (A)" style="max-width:220px">
+        <button id="cable-sizer-btn" type="button">Find cable</button>
+      </div>
+      <div id="cable-sizer-result"></div>
+    </div>
+    <div class="card">
+      <h2>Reference table — LHDN 110°C double insulated power flex</h2>
+      <p class="hint">Digitized from a manufacturer datasheet photo. Rows marked "verify" were partly obscured in the photo — double-check those against the original datasheet before relying on them for a purchase. Ratings are per AS/NZS 3008.1.1 Table 9, "Touching" installation method, no derating applied.</p>
+      <div style="overflow-x:auto">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th>Code</th><th>Area (mm²)</th><th>Strands/Ø</th><th>DC R (mΩ/m)</th>
+              <th>Continuous (A)</th><th>Short-circuit 1s (A)</th><th>OD (mm)</th>
+              <th>Bend radius during/final (mm)</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="cables-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <div id="toast" class="toast"></div>
 
 <script src="js/match.js"></script>
 <script src="js/catalog.js"></script>
+<script src="js/cables.js"></script>
 <script src="js/upload.js"></script>
 <script src="js/review.js"></script>
 <script src="js/app.js"></script>
