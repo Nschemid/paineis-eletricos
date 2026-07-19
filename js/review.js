@@ -50,6 +50,7 @@ function renderReview() {
   wireReviewEvents();
   wireReviewFilters();
   wireZoomControls();
+  wirePurchaseListButton();
 }
 
 function renderReviewHeader() {
@@ -493,6 +494,108 @@ function wireReviewEvents() {
         buildReviewRows();
         renderReviewTable();
       });
+    }
+  });
+}
+
+function productKeyFor(row) {
+  if (row.matchStatus === 'confirmed' && row.matchCandidates && row.matchCandidates.length) {
+    var c = row.matchCandidates[0];
+    var label = [c.brand, c.reference || c.tag_pattern].filter(Boolean).join(' ');
+    return { key: 'cat:' + label, label: label, status: 'catalog match' };
+  }
+  if (row.manufacturer_reference) {
+    var label2 = [row.brand, row.manufacturer_reference].filter(Boolean).join(' ');
+    return { key: 'ref:' + label2, label: label2, status: 'unconfirmed' };
+  }
+  // No catalog match and no part number on the drawing: group by physical spec
+  // (type + poles + rating) rather than the per-circuit description — e.g. ten
+  // breakers each named after a different fan are still one product to order.
+  var specBits = [row.component_type];
+  if (row.poles) specBits.push(row.poles + 'P');
+  if (row.rated_current_a) specBits.push(row.rated_current_a + 'A');
+  var label3 = specBits.length > 1 ? specBits.join(' ') : row.component_type + ': ' + genericDescription(row.description);
+  return { key: 'generic:' + label3, label: label3, status: 'needs a part number' };
+}
+
+function buildPurchaseList() {
+  var groups = {};
+  var order = [];
+  APP.reviewRows.forEach(function (row) {
+    var info = productKeyFor(row);
+    if (!groups[info.key]) {
+      groups[info.key] = { label: info.label, status: info.status, qty: 0 };
+      order.push(info.key);
+    }
+    groups[info.key].qty += 1;
+  });
+  var components = order.map(function (k) { return groups[k]; });
+
+  var cableGroups = {};
+  var cableOrder = [];
+  APP.reviewRows.forEach(function (row) {
+    if (!row.suggested_cable) return;
+    var code = row.suggested_cable.code;
+    if (!cableGroups[code]) {
+      cableGroups[code] = { code: code, circuits: 0 };
+      cableOrder.push(code);
+    }
+    cableGroups[code].circuits += 1;
+  });
+  var cables = cableOrder.map(function (k) { return cableGroups[k]; });
+
+  return { components: components, cables: cables };
+}
+
+function purchaseStatusBadge(status) {
+  if (status === 'catalog match') return '<span class="badge badge-ok">catalog match</span>';
+  if (status === 'unconfirmed') return '<span class="badge badge-warn">unconfirmed</span>';
+  return '<span class="badge badge-muted">needs a part number</span>';
+}
+
+function renderPurchaseList() {
+  var wrap = document.getElementById('purchase-list');
+  if (!wrap) return;
+
+  if (!APP.reviewRows.length) {
+    wrap.innerHTML = '<p class="hint">Nothing to list yet.</p>';
+    return;
+  }
+
+  var list = buildPurchaseList();
+
+  var componentsHtml = '<table class="comp-table"><thead><tr><th>Product</th><th>Qty</th><th>Status</th></tr></thead><tbody>' +
+    list.components.map(function (p) {
+      return '<tr><td>' + escapeHtml(p.label) + '</td><td>' + p.qty + '</td><td>' + purchaseStatusBadge(p.status) + '</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  var cablesHtml = list.cables.length
+    ? '<table class="comp-table"><thead><tr><th>Cable</th><th>Circuits needing it</th></tr></thead><tbody>' +
+      list.cables.map(function (c) { return '<tr><td>' + escapeHtml(c.code) + '</td><td>' + c.circuits + '</td></tr>'; }).join('') +
+      '</tbody></table>'
+    : '<p class="hint">No components had a current rating to size cable for.</p>';
+
+  wrap.innerHTML =
+    '<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Components to buy</h3>' + componentsHtml + '</div>' +
+    '<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Cable sizes needed</h3>' + cablesHtml +
+    '<p class="hint" style="margin-top:8px">This counts circuits per cable size, not total length — run lengths aren\'t on the drawing, so measure/estimate meters separately before ordering.</p></div>';
+}
+
+function wirePurchaseListButton() {
+  var btn = document.getElementById('purchase-list-btn');
+  var wrap = document.getElementById('purchase-list');
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+
+  btn.addEventListener('click', function () {
+    var showing = wrap.style.display !== 'none';
+    if (showing) {
+      wrap.style.display = 'none';
+      btn.textContent = 'View purchase list';
+    } else {
+      renderPurchaseList();
+      wrap.style.display = 'block';
+      btn.textContent = 'Hide purchase list';
     }
   });
 }
