@@ -3,6 +3,7 @@ var APP = {
   drawings: [],
   cables: [],
   terminals: [],
+  contactors: [],
   currentExtraction: null,
   currentFiles: [], // [{ base64, mimeType, previewUrl, isPdf, name }, ...]
   activePreviewIndex: 0,
@@ -85,6 +86,10 @@ document.addEventListener('DOMContentLoaded', function () {
   fetchStore('terminals').then(function (data) {
     APP.terminals = data;
     if (typeof renderTerminals === 'function') renderTerminals();
+  });
+
+  fetchStore('contactors').then(function (data) {
+    APP.contactors = data;
   });
 
   if (typeof initUpload === 'function') initUpload();

@@ -20,6 +20,11 @@ function buildReviewRows() {
       }
     }
 
+    var suggestedContactor = null;
+    if (item.component_type === 'contactor' && (item.load_kw || item.load_fla_a) && typeof findContactorForLoad === 'function') {
+      suggestedContactor = findContactorForLoad(item.load_kw, item.load_fla_a);
+    }
+
     return Object.assign({}, item, {
       poles: poles,
       resolved_via: resolvedVia,
@@ -28,7 +33,8 @@ function buildReviewRows() {
       showEvidence: false,
       showAddForm: false,
       suggested_cable: suggestedCable,
-      cable_mismatch: cableMismatch
+      cable_mismatch: cableMismatch,
+      suggested_contactor: suggestedContactor
     });
   });
 }
@@ -153,6 +159,28 @@ function cableCellHtml(row, i) {
     cell += '<br><span class="badge badge-muted">no cable rated this high</span>';
   }
   return cell;
+}
+
+function contactorCellHtml(row, i) {
+  if (row.component_type !== 'contactor') return '';
+  if (!row.load_kw && !row.load_fla_a) return '';
+  if (!row.suggested_contactor) return '<br><span class="badge badge-muted">no contactor in table rated this high</span>';
+  return '<br><button class="evidencia-toggle" data-action="toggle-contactor-detail" data-row="' + i + '">suggest ' + escapeHtml(row.suggested_contactor.base_model) + '</button>';
+}
+
+function contactorDetailRowHtml(row, i) {
+  if (!row.suggested_contactor) return '';
+  var c = row.suggested_contactor;
+  var loadLabel = row.load_kw ? (row.load_kw + 'kW') : (row.load_fla_a + 'A FLA');
+  var variants = c.coil_variants.map(function (v) {
+    return '<div style="margin-bottom:4px">' + escapeHtml(c.base_model + v.suffix) + ' — ' + escapeHtml(v.coil_voltage) + ' coil, ' + escapeHtml(v.aux_contacts) + '</div>';
+  }).join('');
+  return '<tr class="contactor-detail-row" data-row-contactor="' + i + '" style="display:none"><td colspan="10"><div class="evidencia-detail show">' +
+    '<strong>Suggested frame: ' + escapeHtml(c.base_model) + '</strong>' + (c.confidence === 'low' ? ' <span class="badge badge-warn">verify</span>' : '') + '<br>' +
+    'AC-3 rating: ' + escapeHtml(c.ac3_current_a) + 'A / ' + escapeHtml(c.ac3_kw_400v) + 'kW @ 400V — sized for ' + escapeHtml(loadLabel) + '<br>' +
+    'Pick the exact part based on your control voltage/aux contact needs:<br>' + variants +
+    '<p class="hint" style="margin-top:6px">Frame/AC-3 size only — coil voltage and auxiliary contact count are a design choice, not something read off the drawing. Confirm the exact part number in Siemens\' SIRIUS configurator before ordering.</p>' +
+    '</div></td></tr>';
 }
 
 function cableDetailRowHtml(row, i) {
@@ -283,7 +311,7 @@ function itemRowHtml(row, i, extraClass) {
     '<td>' + escapeHtml(row.tag) + '</td>' +
     '<td>' + escapeHtml(row.description) + '</td>' +
     '<td>' + escapeHtml(row.component_type) + '</td>' +
-    '<td>' + escapeHtml(row.brand) + (row.manufacturer_reference ? '<br><span class="hint">' + escapeHtml(row.manufacturer_reference) + '</span>' : '') + '</td>' +
+    '<td>' + escapeHtml(row.brand) + (row.manufacturer_reference ? '<br><span class="hint">' + escapeHtml(row.manufacturer_reference) + '</span>' : '') + contactorCellHtml(row, i) + '</td>' +
     '<td><input type="number" min="0" class="polos-input" data-row="' + i + '" value="' + row.poles + '"></td>' +
     '<td>' + escapeHtml(sourceLabel) + '<br>' +
       '<button class="evidencia-toggle" data-action="toggle-evidencia" data-row="' + i + '">detail</button></td>' +
@@ -328,8 +356,9 @@ function itemRowHtml(row, i, extraClass) {
     '</td></tr>';
 
   var cableDetailRow = cableDetailRowHtml(row, i);
+  var contactorDetailRow = contactorDetailRowHtml(row, i);
 
-  return mainRow + evidenceRow + suggestRow + cableDetailRow + addFormRow;
+  return mainRow + evidenceRow + suggestRow + cableDetailRow + contactorDetailRow + addFormRow;
 }
 
 function populateTypeFilterOptions() {
@@ -464,6 +493,13 @@ function wireReviewEvents() {
       var idxCable = parseInt(trMainCable.dataset.row, 10);
       var r4 = body.querySelector('[data-row-cable="' + idxCable + '"]');
       if (r4) r4.style.display = r4.style.display === 'none' ? 'table-row' : 'none';
+    }
+
+    if (action === 'toggle-contactor-detail') {
+      var trMainContactor = btn.closest('tr');
+      var idxContactor = parseInt(trMainContactor.dataset.row, 10);
+      var r5 = body.querySelector('[data-row-contactor="' + idxContactor + '"]');
+      if (r5) r5.style.display = r5.style.display === 'none' ? 'table-row' : 'none';
     }
 
     if (action === 'accept-suggest') {
@@ -615,7 +651,11 @@ function confirmReviewList() {
         rated_current_source: r.rated_current_source || 'not_available',
         drawing_cable_size_mm2: r.drawing_cable_size_mm2 || '',
         suggested_cable_code: r.suggested_cable ? r.suggested_cable.code : '',
-        cable_mismatch: !!r.cable_mismatch
+        cable_mismatch: !!r.cable_mismatch,
+        load_kw: r.load_kw || 0,
+        load_fla_a: r.load_fla_a || 0,
+        load_source: r.load_source || 'not_available',
+        suggested_contactor_model: r.suggested_contactor ? r.suggested_contactor.base_model : ''
       };
     }),
     confirmed_at: new Date().toISOString()

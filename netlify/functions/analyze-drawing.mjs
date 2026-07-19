@@ -88,7 +88,19 @@ conductor/cable size for that circuit (e.g. "2.5mm²", "4 sqmm", "#10 AWG"), cop
 text verbatim into "drawing_cable_size_mm2" (as a plain number in mm² if the drawing
 already uses mm², otherwise leave the original unit text) — leave it empty if the
 drawing doesn't state one. These two fields let a downstream tool cross-check the
-drawing's own cable size against the breaker rating — don't guess either one.`;
+drawing's own cable size against the breaker rating — don't guess either one.
+
+ALSO EXTRACT, FOR CONTACTORS AND OVERLOAD RELAYS — THE CONNECTED MOTOR LOAD:
+a contactor/overload switches a specific motor or load, and the drawing usually
+prints that load's power (kW) and/or full load current (FLA, in Amps) directly
+below or next to the LOAD symbol/tag it feeds — even though this number is NOT
+printed on the contactor's own symbol. Look at what the contactor/overload is
+wired to and copy that load's kW and/or FLA into "load_kw" and "load_fla_a" for
+that specific contactor/overload row. Set "load_source" to "label" when you
+found a printed value this way. If no load rating is visible anywhere near the
+circuit, set "load_source" to "not_available" and leave load_kw/load_fla_a at 0
+— do not estimate a motor size from the breaker's trip rating or from the
+symbol's visual size alone.`;
 
 const responseSchema = {
   type: "OBJECT",
@@ -121,6 +133,9 @@ const responseSchema = {
           rated_current_a: { type: "INTEGER" },
           rated_current_source: { type: "STRING", enum: ["label", "not_available"] },
           drawing_cable_size_mm2: { type: "STRING" },
+          load_kw: { type: "NUMBER" },
+          load_fla_a: { type: "NUMBER" },
+          load_source: { type: "STRING", enum: ["label", "not_available"] },
         },
         required: ["tag", "description", "component_type", "pole_source", "poles", "evidence", "confidence", "sheet"],
       },
